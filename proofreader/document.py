@@ -10,6 +10,9 @@ from docx.enum.text import WD_COLOR_INDEX
 from docx.oxml.shared import qn
 from docx.oxml.ns import nsdecls
 from docx.oxml import parse_xml
+import uuid
+from datetime import datetime
+from .word_comments import WordCommentsHandler
 
 
 class DocumentProcessor:
@@ -19,11 +22,13 @@ class DocumentProcessor:
         self.document = None
         self.paragraphs = []
         self.text_content = ""
+        self.comments_handler = None
     
     def load_document(self, file_path: str) -> bool:
         """加载docx文档"""
         try:
             self.document = Document(file_path)
+            self.comments_handler = WordCommentsHandler(self.document)
             self._extract_text()
             return True
         except Exception as e:
@@ -69,7 +74,7 @@ class DocumentProcessor:
     
     def add_comment(self, paragraph_index: int, text: str, comment: str, 
                    author: str = "AI校对助手", color: str = "red"):
-        """在指定段落添加批注"""
+        """在指定段落添加Word原生批注"""
         try:
             if paragraph_index >= len(self.paragraphs):
                 return False
@@ -78,8 +83,8 @@ class DocumentProcessor:
             
             # 查找要批注的文本
             if text in paragraph.text:
-                # 创建批注
-                self._add_comment_to_paragraph(paragraph, text, comment, author, color)
+                # 使用Word原生批注功能
+                self._add_word_comment(paragraph, text, comment, author)
                 return True
             
         except Exception as e:
@@ -87,41 +92,46 @@ class DocumentProcessor:
         
         return False
     
-    def _add_comment_to_paragraph(self, paragraph, target_text: str, 
-                                comment: str, author: str, color: str):
-        """在段落中添加批注"""
-        # 清空段落内容
-        paragraph.clear()
-        
-        # 重新构建段落，添加批注
-        original_text = paragraph.text if hasattr(paragraph, '_original_text') else target_text
-        
-        # 查找目标文本位置
-        start_pos = original_text.find(target_text)
-        if start_pos == -1:
-            # 如果找不到，直接添加到段落末尾
-            run = paragraph.add_run(original_text)
-            comment_run = paragraph.add_run(f"【批注：{comment}】")
-            comment_run.font.color.rgb = RGBColor(255, 0, 0)  # 红色
-            comment_run.font.bold = True
-        else:
+    def _add_word_comment(self, paragraph, target_text: str, comment: str, author: str):
+        """使用Word原生批注功能添加批注"""
+        try:
+            # 保存原始段落文本
+            original_text = paragraph.text
+            start_pos = original_text.find(target_text)
+            
+            if start_pos == -1:
+                return False
+            
+            end_pos = start_pos + len(target_text)
+            
+            # 清空段落
+            paragraph.clear()
+            
             # 添加目标文本之前的内容
             if start_pos > 0:
                 paragraph.add_run(original_text[:start_pos])
             
-            # 添加目标文本（高亮显示）
-            highlighted_run = paragraph.add_run(target_text)
-            highlighted_run.font.highlight_color = WD_COLOR_INDEX.YELLOW
+            # 创建带有批注标记的run（高亮显示）
+            commented_run = paragraph.add_run(target_text)
+            commented_run.font.highlight_color = WD_COLOR_INDEX.YELLOW
             
-            # 添加批注
-            comment_run = paragraph.add_run(f"【批注：{comment}】")
-            comment_run.font.color.rgb = RGBColor(255, 0, 0)  # 红色
-            comment_run.font.bold = True
+            # 直接添加批注内容到段落中（确保可见）
+            comment_run = paragraph.add_run(f" [批注: {comment}]")
+            comment_run.font.color.rgb = RGBColor(204, 0, 0)  # 深红色
+            comment_run.font.size = 160000  # 8pt (160000 twips = 8pt)
+            comment_run.font.italic = True
             
             # 添加目标文本之后的内容
-            end_pos = start_pos + len(target_text)
             if end_pos < len(original_text):
                 paragraph.add_run(original_text[end_pos:])
+            
+            print(f"📝 批注已添加到文档: {comment}")
+            return True
+            
+        except Exception as e:
+            print(f"添加Word批注失败: {e}")
+            # 如果失败，回退到简单的文本批注
+            return self._add_simple_text_comment(paragraph, target_text, comment, author)
     
     def highlight_text(self, paragraph_index: int, text: str, 
                       color: WD_COLOR_INDEX = WD_COLOR_INDEX.YELLOW):
@@ -160,6 +170,100 @@ class DocumentProcessor:
             if text in para_info['text']:
                 return i, para_info['text']
         return -1, ""
+    
+    def _add_visual_comment_marker(self, run, comment: str):
+        """添加视觉批注标记，包含完整批注内容"""
+        try:
+            # 高亮显示批注的文本
+            run.font.highlight_color = WD_COLOR_INDEX.YELLOW
+            
+            # 获取run所在的段落
+            paragraph = run._element.getparent().getparent()
+            
+            # 创建包含批注内容的标记XML
+            comment_marker_xml = f'''
+            <w:r xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+                <w:rPr>
+                    <w:color w:val="CC0000"/>
+                    <w:sz w:val="16"/>
+                    <w:i/>
+                </w:rPr>
+                <w:t xml:space="preserve"> [批注: {comment}]</w:t>
+            </w:r>
+            '''
+            
+            # 解析并添加批注标记
+            comment_marker = parse_xml(comment_marker_xml)
+            run._element.addnext(comment_marker)
+            
+            # 记录批注信息
+            print(f"📝 批注已添加: {comment}")
+            
+        except Exception as e:
+            print(f"添加视觉批注标记失败: {e}")
+            # 最简单的备用方案
+            run.font.highlight_color = WD_COLOR_INDEX.YELLOW
+            # 添加简化的批注文本
+            try:
+                # 在段落中直接添加批注文本
+                paragraph = run._element.getparent()
+                if paragraph is not None:
+                    # 获取段落的父级元素来添加批注
+                    for parent_paragraph in paragraph.iter():
+                        if parent_paragraph.tag.endswith('}p'):
+                            # 在段落后添加批注run
+                            simple_comment = parse_xml(f'''
+                            <w:r xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+                                <w:rPr>
+                                    <w:color w:val="FF0000"/>
+                                    <w:sz w:val="16"/>
+                                    <w:i/>
+                                </w:rPr>
+                                <w:t> [批注: {comment}]</w:t>
+                            </w:r>
+                            ''')
+                            parent_paragraph.append(simple_comment)
+                            break
+            except Exception as inner_e:
+                print(f"备用批注方案也失败: {inner_e}")
+    
+    def _add_simple_text_comment(self, paragraph, target_text: str, comment: str, author: str):
+        """备用方法：添加简单的文本批注"""
+        try:
+            original_text = paragraph.text
+            start_pos = original_text.find(target_text)
+            
+            if start_pos == -1:
+                return False
+            
+            end_pos = start_pos + len(target_text)
+            
+            # 清空段落
+            paragraph.clear()
+            
+            # 添加目标文本之前的内容
+            if start_pos > 0:
+                paragraph.add_run(original_text[:start_pos])
+            
+            # 添加高亮的目标文本
+            highlighted_run = paragraph.add_run(target_text)
+            highlighted_run.font.highlight_color = WD_COLOR_INDEX.YELLOW
+            
+            # 添加简化的批注标识
+            comment_run = paragraph.add_run(f" [批注: {comment}]")
+            comment_run.font.color.rgb = RGBColor(200, 0, 0)
+            comment_run.font.size = 90000  # 9pt
+            comment_run.font.italic = True
+            
+            # 添加目标文本之后的内容
+            if end_pos < len(original_text):
+                paragraph.add_run(original_text[end_pos:])
+            
+            return True
+            
+        except Exception as e:
+            print(f"添加简单文本批注失败: {e}")
+            return False
     
     def get_statistics(self) -> Dict:
         """获取文档统计信息"""
