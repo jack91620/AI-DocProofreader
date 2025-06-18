@@ -8,22 +8,45 @@ import click
 import os
 import sys
 from rich.console import Console
+import configparser
 
 from proofreader import ProofReader, Config
+from proofreader.proofreader_revisions import ProofReaderWithRevisions
+from proofreader.proofreader_track_changes import ProofReaderWithTrackChanges
 
 
 console = Console()
 
 
 def load_config():
-    """加载配置"""
-    try:
-        config = Config()
-        config.validate()
-        return config
-    except Exception as e:
-        console.print(f"[red]配置加载失败: {e}[/red]")
-        sys.exit(1)
+    """加载配置文件"""
+    config = configparser.ConfigParser()
+    config_files = ['config.ini', 'settings.ini', '.env']
+    
+    for config_file in config_files:
+        if os.path.exists(config_file):
+            config.read(config_file, encoding='utf-8')
+            return config
+    
+    return None
+
+
+def get_api_key():
+    """获取API密钥"""
+    # 优先从环境变量获取
+    api_key = os.getenv('OPENAI_API_KEY') or os.getenv('API_KEY')
+    if api_key:
+        return api_key
+    
+    # 从配置文件获取
+    config = load_config()
+    if config:
+        if config.has_section('ai') and config.has_option('ai', 'api_key'):
+            return config.get('ai', 'api_key')
+        if config.has_section('openai') and config.has_option('openai', 'api_key'):
+            return config.get('openai', 'api_key')
+    
+    return None
 
 
 @click.group()
@@ -36,23 +59,28 @@ def cli():
 @cli.command()
 @click.option('-i', '--input', 'input_file', required=True, help='输入Word文档路径')
 @click.option('-o', '--output', 'output_file', help='输出Word文档路径')
-@click.option('-m', '--mode', default='comments', type=click.Choice(['comments', 'revisions']), 
-              help='校对模式：comments（批注模式）或 revisions（修订模式）')
+@click.option('-m', '--mode', default='comments', type=click.Choice(['comments', 'revisions', 'track_changes']), 
+              help='校对模式：comments（批注模式）或 revisions（修订模式）或 track_changes（真正的Word跟踪更改）')
 def proofread(input_file: str, output_file: str, mode: str):
     """校对Word文档"""
     try:
-        config = load_config()
+        api_key = get_api_key()
+        if not api_key:
+            console.print("[red]❌ 错误：未找到API密钥。请设置环境变量OPENAI_API_KEY或在配置文件中设置。[/red]")
+            return
         
-        from proofreader.proofreader import ProofReader
-        
-        proofreader = ProofReader(config.ai.api_key)
-        
-        if mode == 'revisions':
+        if mode == 'track_changes':
+            console.print("[blue]�� 使用真正的Word跟踪更改功能进行校对...[/blue]")
+            console.print("[dim]真正的Word跟踪更改功能将直接在文档中显示修改，使用Word的跟踪更改功能[/dim]")
+            proofreader = ProofReaderWithTrackChanges(api_key)
+        elif mode == 'revisions':
             console.print("[blue]🔄 使用修订模式进行校对...[/blue]")
             console.print("[dim]修订模式将直接在文档中显示修改，使用Word的跟踪更改功能[/dim]")
+            proofreader = ProofReaderWithRevisions(api_key)
         else:
             console.print("[blue]💬 使用批注模式进行校对...[/blue]")
             console.print("[dim]批注模式将在Word审阅窗格中显示建议[/dim]")
+            proofreader = ProofReader(api_key)
         
         success = proofreader.proofread_document(input_file, output_file, mode)
         
@@ -60,6 +88,11 @@ def proofread(input_file: str, output_file: str, mode: str):
             console.print(f"[green]✅ 校对完成！输出文件：{output_file or input_file.replace('.docx', f'_{mode}.docx')}[/green]")
             
             if mode == 'revisions':
+                console.print("[blue]📝 使用Word打开文档，可以看到跟踪更改：[/blue]")
+                console.print("   - [red]删除线文本[/red] 表示需要删除的内容")
+                console.print("   - [blue underline]下划线文本[/blue underline] 表示新插入的内容")
+                console.print("   - 可以在Word中接受或拒绝这些修改")
+            elif mode == 'track_changes':
                 console.print("[blue]📝 使用Word打开文档，可以看到跟踪更改：[/blue]")
                 console.print("   - [red]删除线文本[/red] 表示需要删除的内容")
                 console.print("   - [blue underline]下划线文本[/blue underline] 表示新插入的内容")
