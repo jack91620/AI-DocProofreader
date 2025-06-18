@@ -15,7 +15,7 @@ from .config import Config
 from .document import DocumentProcessor
 from .ai_checker import AIChecker, ProofreadingResult
 from .word_comments_advanced import WordCommentsManager
-from .create_word_comments_xml import add_comments_to_docx
+from .word_comments_xml import add_comments_to_docx
 from .proofreader_revisions import ProofReaderWithRevisions
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

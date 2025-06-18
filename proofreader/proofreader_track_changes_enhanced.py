@@ -16,7 +16,7 @@ from .document import DocumentProcessor
 from .ai_checker import AIChecker, ProofreadingResult
 from .word_track_changes import WordTrackChangesManager, enable_track_changes_in_docx
 from .word_comments_advanced import WordCommentsManager
-from .create_word_comments_xml import create_comments_xml, create_document_rels, update_content_types
+from .word_comments_xml import create_comments_xml, create_document_rels, update_content_types
 import zipfile
 import tempfile
 
@@ -241,14 +241,10 @@ class ProofReaderWithTrackChangesAndComments:
                 create_comments_xml(comments_xml_path, comments_data)
                 
                 # 创建document.xml.rels
-                rels_dir = os.path.join(word_dir, '_rels')
-                os.makedirs(rels_dir, exist_ok=True)
-                rels_path = os.path.join(rels_dir, 'document.xml.rels')
-                create_document_rels(comments_xml_path.replace('/comments.xml', ''))
+                create_document_rels(temp_dir)
                 
                 # 更新Content_Types.xml
-                content_types_path = os.path.join(temp_dir, '[Content_Types].xml')
-                update_content_types(content_types_path)
+                update_content_types(temp_dir)
                 
                 # 重新打包
                 with zipfile.ZipFile(output_file, 'w', zipfile.ZIP_DEFLATED) as zip_ref:

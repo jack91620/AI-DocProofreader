@@ -14,6 +14,8 @@ from proofreader import ProofReader, Config
 from proofreader.proofreader_revisions import ProofReaderWithRevisions
 from proofreader.proofreader_track_changes import ProofReaderWithTrackChanges
 from proofreader.proofreader_track_changes_enhanced import ProofReaderWithTrackChangesAndComments
+# from proofreader.proofreader_track_changes_enhanced_v2 import ProofReaderWithTrackChangesAndCommentsV2
+# from proofreader.proofreader_track_changes_enhanced_fixed import ProofReaderWithTrackChangesAndCommentsFixed
 
 
 console = Console()
@@ -61,7 +63,7 @@ def cli():
 @click.option('-i', '--input', 'input_file', required=True, help='输入Word文档路径')
 @click.option('-o', '--output', 'output_file', help='输出Word文档路径')
 @click.option('-m', '--mode', default='comments', type=click.Choice(['comments', 'revisions', 'track_changes', 'enhanced']), 
-              help='校对模式：comments（批注模式）、revisions（修订模式）、track_changes（跟踪更改）或 enhanced（跟踪更改+批注）')
+              help='校对模式：comments（批注模式）、revisions（修订模式）、track_changes（跟踪更改）、enhanced（跟踪更改+批注）')
 def proofread(input_file: str, output_file: str, mode: str):
     """校对Word文档"""
     try:
@@ -72,7 +74,7 @@ def proofread(input_file: str, output_file: str, mode: str):
         
         if mode == 'enhanced':
             console.print("[blue]🌟 使用增强模式（跟踪更改+批注）进行校对...[/blue]")
-            console.print("[dim]增强模式将同时使用Word跟踪更改和批注功能，提供最完整的校对体验[/dim]")
+            console.print("[dim]增强模式同时提供跟踪更改和详细批注，提供最完整的校对体验[/dim]")
             proofreader = ProofReaderWithTrackChangesAndComments(api_key)
         elif mode == 'track_changes':
             console.print("[blue]🔄 使用真正的Word跟踪更改功能进行校对...[/blue]")
