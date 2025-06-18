@@ -15,6 +15,17 @@ from proofreader import ProofReader, Config
 console = Console()
 
 
+def load_config():
+    """加载配置"""
+    try:
+        config = Config()
+        config.validate()
+        return config
+    except Exception as e:
+        console.print(f"[red]配置加载失败: {e}[/red]")
+        sys.exit(1)
+
+
 @click.group()
 @click.version_option(version="1.0.0")
 def cli():
@@ -23,36 +34,43 @@ def cli():
 
 
 @cli.command()
-@click.option('--input', '-i', required=True, help='输入的docx文件路径')
-@click.option('--output', '-o', required=True, help='输出的docx文件路径')
-@click.option('--config', '-c', help='配置文件路径')
-def proofread(input, output, config):
-    """校对单个docx文档"""
+@click.option('-i', '--input', 'input_file', required=True, help='输入Word文档路径')
+@click.option('-o', '--output', 'output_file', help='输出Word文档路径')
+@click.option('-m', '--mode', default='comments', type=click.Choice(['comments', 'revisions']), 
+              help='校对模式：comments（批注模式）或 revisions（修订模式）')
+def proofread(input_file: str, output_file: str, mode: str):
+    """校对Word文档"""
     try:
-        # 检查输入文件是否存在
-        if not os.path.exists(input):
-            console.print(f"[red]错误：输入文件不存在 - {input}[/red]")
-            sys.exit(1)
+        config = load_config()
         
-        # 检查文件格式
-        if not input.lower().endswith('.docx'):
-            console.print("[red]错误：只支持.docx格式的文件[/red]")
-            sys.exit(1)
+        from proofreader.proofreader import ProofReader
         
-        # 创建校对器
-        proofreader_config = Config()
-        proofreader = ProofReader(proofreader_config)
+        proofreader = ProofReader(config.ai.api_key)
         
-        # 执行校对
-        if proofreader.proofread_document(input, output):
-            console.print(f"[green]✅ 校对完成！输出文件：{output}[/green]")
+        if mode == 'revisions':
+            console.print("[blue]🔄 使用修订模式进行校对...[/blue]")
+            console.print("[dim]修订模式将直接在文档中显示修改，使用Word的跟踪更改功能[/dim]")
+        else:
+            console.print("[blue]💬 使用批注模式进行校对...[/blue]")
+            console.print("[dim]批注模式将在Word审阅窗格中显示建议[/dim]")
+        
+        success = proofreader.proofread_document(input_file, output_file, mode)
+        
+        if success:
+            console.print(f"[green]✅ 校对完成！输出文件：{output_file or input_file.replace('.docx', f'_{mode}.docx')}[/green]")
+            
+            if mode == 'revisions':
+                console.print("[blue]📝 使用Word打开文档，可以看到跟踪更改：[/blue]")
+                console.print("   - [red]删除线文本[/red] 表示需要删除的内容")
+                console.print("   - [blue underline]下划线文本[/blue underline] 表示新插入的内容")
+                console.print("   - 可以在Word中接受或拒绝这些修改")
+            else:
+                console.print("[blue]📝 使用Word打开文档，在审阅窗格中查看批注建议[/blue]")
         else:
             console.print("[red]❌ 校对失败[/red]")
-            sys.exit(1)
-            
+    
     except Exception as e:
-        console.print(f"[red]程序执行错误：{e}[/red]")
-        sys.exit(1)
+        console.print(f"[red]错误：{e}[/red]")
 
 
 @cli.command()
@@ -193,6 +211,36 @@ Python的设计理念是优雅、明确、简单。Python开发者的哲学是"�
     except Exception as e:
         console.print(f"[red]演示失败: {e}[/red]")
         sys.exit(1)
+
+
+@cli.command()
+@click.option('-i', '--input', 'input_file', required=True, help='输入Word文档路径')
+@click.option('-o', '--output', 'output_file', help='输出Word文档路径')
+def revise(input_file: str, output_file: str):
+    """使用修订模式校对Word文档（快捷命令）"""
+    try:
+        config = load_config()
+        
+        from proofreader.proofreader_revisions import ProofReaderWithRevisions
+        
+        proofreader = ProofReaderWithRevisions(config.ai.api_key)
+        
+        console.print("[blue]🔄 使用修订模式进行校对...[/blue]")
+        console.print("[dim]修订模式将直接在文档中显示修改，使用Word的跟踪更改功能[/dim]")
+        
+        success = proofreader.proofread_document_with_revisions(input_file, output_file)
+        
+        if success:
+            console.print(f"[green]✅ 修订校对完成！输出文件：{output_file or input_file.replace('.docx', '_revised.docx')}[/green]")
+            console.print("[blue]📝 使用Word打开文档，可以看到跟踪更改：[/blue]")
+            console.print("   - [red]删除线文本[/red] 表示需要删除的内容")
+            console.print("   - [blue underline]下划线文本[/blue underline] 表示新插入的内容")
+            console.print("   - 可以在Word中接受或拒绝这些修改")
+        else:
+            console.print("[red]❌ 修订校对失败[/red]")
+    
+    except Exception as e:
+        console.print(f"[red]错误：{e}[/red]")
 
 
 if __name__ == '__main__':

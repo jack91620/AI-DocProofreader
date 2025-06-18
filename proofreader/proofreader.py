@@ -16,6 +16,7 @@ from .document import DocumentProcessor
 from .ai_checker import AIChecker, ProofreadingResult
 from .word_comments_advanced import WordCommentsManager
 from create_word_comments_xml import add_comments_to_docx
+from .proofreader_revisions import ProofReaderWithRevisions
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -26,14 +27,25 @@ class ProofReader:
     def __init__(self, api_key: str = None):
         """初始化校对器"""
         self.config = Config()
-        self.ai_checker = AIChecker(api_key)
+        if api_key:
+            self.config.ai.api_key = api_key
+        self.ai_checker = AIChecker(self.config)
         self.use_word_review_comments = True  # 启用Word审阅批注
         self.console = Console()
         
         self.document_processor = DocumentProcessor()
+        
+        # 创建修订校对器
+        self.revisions_proofreader = ProofReaderWithRevisions(api_key)
     
-    def proofread_document(self, input_file: str, output_file: str = None) -> bool:
-        """校对文档并生成带批注的输出"""
+    def proofread_document(self, input_file: str, output_file: str = None, mode: str = "comments") -> bool:
+        """校对文档并生成带批注或修订的输出"""
+        
+        if mode == "revisions":
+            # 使用修订模式
+            return self.revisions_proofreader.proofread_document_with_revisions(input_file, output_file)
+        
+        # 使用批注模式（原有实现）
         try:
             # 生成输出文件名
             if not output_file:
