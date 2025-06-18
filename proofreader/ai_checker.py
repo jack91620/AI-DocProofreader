@@ -42,10 +42,17 @@ class AIChecker:
     
     def __init__(self, config: Config):
         self.config = config
-        self.client = openai.OpenAI(
-            api_key=config.ai.api_key,
-            base_url=config.ai.base_url
-        )
+        try:
+            self.client = openai.OpenAI(
+                api_key=config.ai.api_key,
+                base_url=config.ai.base_url
+            )
+        except Exception as e:
+            # 兼容不同版本的openai库
+            openai.api_key = config.ai.api_key
+            if hasattr(openai, 'api_base'):
+                openai.api_base = config.ai.base_url
+            self.client = None
     
     def check_text(self, text: str) -> ProofreadingResult:
         """检查文本"""
@@ -94,23 +101,43 @@ class AIChecker:
         try:
             prompt = self._build_proofread_prompt(text)
             
-            response = self.client.chat.completions.create(
-                model=self.config.ai.model,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "你是一个专业的中文计算机教材校对专家。请仔细检查文本中的语法、用词、逻辑和专业术语问题。"
-                    },
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ],
-                max_tokens=self.config.ai.max_tokens,
-                temperature=self.config.ai.temperature
-            )
+            if self.client:
+                # 使用新版openai客户端
+                response = self.client.chat.completions.create(
+                    model=self.config.ai.model,
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": "你是一个专业的中文计算机教材校对专家。请仔细检查文本中的语法、用词、逻辑和专业术语问题。"
+                        },
+                        {
+                            "role": "user",
+                            "content": prompt
+                        }
+                    ],
+                    max_tokens=self.config.ai.max_tokens,
+                    temperature=self.config.ai.temperature
+                )
+                result_text = response.choices[0].message.content
+            else:
+                # 使用旧版openai接口
+                response = openai.ChatCompletion.create(
+                    model=self.config.ai.model,
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": "你是一个专业的中文计算机教材校对专家。请仔细检查文本中的语法、用词、逻辑和专业术语问题。"
+                        },
+                        {
+                            "role": "user",
+                            "content": prompt
+                        }
+                    ],
+                    max_tokens=self.config.ai.max_tokens,
+                    temperature=self.config.ai.temperature
+                )
+                result_text = response.choices[0].message.content
             
-            result_text = response.choices[0].message.content
             return self._parse_json_response(result_text)
             
         except Exception as e:
@@ -218,17 +245,30 @@ class AIChecker:
 文本：{text}
 """
             
-            response = self.client.chat.completions.create(
-                model=self.config.ai.model,
-                messages=[
-                    {"role": "system", "content": "你是一个中文语法专家。"},
-                    {"role": "user", "content": prompt}
-                ],
-                max_tokens=2000,
-                temperature=0.1
-            )
+            if self.client:
+                response = self.client.chat.completions.create(
+                    model=self.config.ai.model,
+                    messages=[
+                        {"role": "system", "content": "你是一个中文语法专家。"},
+                        {"role": "user", "content": prompt}
+                    ],
+                    max_tokens=2000,
+                    temperature=0.1
+                )
+                result_text = response.choices[0].message.content
+            else:
+                response = openai.ChatCompletion.create(
+                    model=self.config.ai.model,
+                    messages=[
+                        {"role": "system", "content": "你是一个中文语法专家。"},
+                        {"role": "user", "content": prompt}
+                    ],
+                    max_tokens=2000,
+                    temperature=0.1
+                )
+                result_text = response.choices[0].message.content
             
-            result = self._parse_json_response(response.choices[0].message.content)
+            result = self._parse_json_response(result_text)
             return result.get("grammar_issues", [])
             
         except Exception as e:
