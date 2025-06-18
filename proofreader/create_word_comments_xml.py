@@ -12,8 +12,30 @@ from datetime import datetime
 import xml.etree.ElementTree as ET
 
 
-def create_comments_xml(comments_data):
+def create_comments_xml(output_path_or_data, comments_data=None):
     """创建comments.xml内容"""
+    # 兼容两种调用方式
+    if isinstance(output_path_or_data, str) and comments_data is not None:
+        # 第一种方式：create_comments_xml(output_path, comments_data)
+        output_path = output_path_or_data
+        data = comments_data
+        
+        # 创建XML内容
+        xml_content = _create_comments_xml_content(data)
+        
+        # 保存到文件
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write(xml_content)
+        print(f"✅ 已创建comments.xml: {output_path}")
+        return True
+    else:
+        # 第二种方式：create_comments_xml(comments_data)
+        data = output_path_or_data
+        return _create_comments_xml_content(data)
+
+
+def _create_comments_xml_content(comments_data):
+    """创建comments.xml内容的核心函数"""
     # XML命名空间
     ns_w = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
     
@@ -49,7 +71,7 @@ def add_comments_to_docx(docx_path, output_path, comments_data):
                 zip_ref.extractall(temp_dir)
             
             # 创建comments.xml内容
-            comments_xml = create_comments_xml(comments_data)
+            comments_xml = _create_comments_xml_content(comments_data)
             
             # 保存comments.xml到word目录
             word_dir = os.path.join(temp_dir, 'word')

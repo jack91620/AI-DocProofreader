@@ -195,13 +195,13 @@ def add_comments_xml_files(temp_dir, comments_data):
         try:
             from .create_word_comments_xml import (
                 create_comments_xml, 
-                create_document_xml_rels, 
+                create_document_rels, 
                 update_content_types
             )
         except ImportError:
-            from create_word_comments_xml import (
+            from .create_word_comments_xml import (
                 create_comments_xml, 
-                create_document_xml_rels, 
+                create_document_rels, 
                 update_content_types
             )
         
@@ -216,7 +216,7 @@ def add_comments_xml_files(temp_dir, comments_data):
         rels_dir = os.path.join(word_dir, '_rels')
         os.makedirs(rels_dir, exist_ok=True)
         rels_path = os.path.join(rels_dir, 'document.xml.rels')
-        create_document_xml_rels(rels_path)
+        create_document_rels(temp_dir)
         
         # 更新Content_Types.xml
         content_types_path = os.path.join(temp_dir, '[Content_Types].xml')

@@ -16,7 +16,7 @@ from .document import DocumentProcessor
 from .ai_checker import AIChecker, ProofreadingResult
 from .word_track_changes import WordTrackChangesManager, enable_track_changes_in_docx
 from .word_comments_advanced import WordCommentsManager
-from .create_word_comments_xml import create_comments_xml, create_document_xml_rels, update_content_types
+from .create_word_comments_xml import create_comments_xml, create_document_rels, update_content_types
 import zipfile
 import tempfile
 
@@ -244,7 +244,7 @@ class ProofReaderWithTrackChangesAndComments:
                 rels_dir = os.path.join(word_dir, '_rels')
                 os.makedirs(rels_dir, exist_ok=True)
                 rels_path = os.path.join(rels_dir, 'document.xml.rels')
-                create_document_xml_rels(rels_path)
+                create_document_rels(comments_xml_path.replace('/comments.xml', ''))
                 
                 # 更新Content_Types.xml
                 content_types_path = os.path.join(temp_dir, '[Content_Types].xml')
