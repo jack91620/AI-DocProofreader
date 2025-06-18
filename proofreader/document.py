@@ -265,6 +265,22 @@ class DocumentProcessor:
             print(f"添加简单文本批注失败: {e}")
             return False
     
+    def extract_text_content(self, file_path: str) -> List[str]:
+        """提取文档文本内容"""
+        try:
+            document = Document(file_path)
+            paragraphs = []
+            
+            for paragraph in document.paragraphs:
+                text = paragraph.text.strip()
+                if text:  # 只保留非空段落
+                    paragraphs.append(text)
+            
+            return paragraphs
+        except Exception as e:
+            print(f"提取文档内容失败: {e}")
+            return []
+    
     def get_statistics(self) -> Dict:
         """获取文档统计信息"""
         return {

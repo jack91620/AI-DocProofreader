@@ -60,7 +60,10 @@ def create_comments_xml(comments_xml_path: str, comments_data: list):
     for i, comment_data in enumerate(comments_data, 1):
         # 创建批注元素
         comment_elem = ET.SubElement(comments_root, f'{{{ns_w}}}comment')
-        comment_elem.set(f'{{{ns_w}}}id', str(i))
+        
+        # 使用传入的ID，如果没有则使用索引
+        comment_id = comment_data.get('id', i)
+        comment_elem.set(f'{{{ns_w}}}id', str(comment_id))
         comment_elem.set(f'{{{ns_w}}}author', comment_data.get('author', 'AI校对助手'))
         comment_elem.set(f'{{{ns_w}}}date', comment_data.get('date', datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")))
         comment_elem.set(f'{{{ns_w}}}initials', 'AI')
@@ -72,10 +75,13 @@ def create_comments_xml(comments_xml_path: str, comments_data: list):
         r_elem = ET.SubElement(p_elem, f'{{{ns_w}}}r')
         t_elem = ET.SubElement(r_elem, f'{{{ns_w}}}t')
         t_elem.text = comment_data.get('text', '')
+        
+        print(f"✅ 创建批注XML: ID={comment_id}, 内容={comment_data.get('text', '')[:30]}...")
     
     # 写入XML文件
     tree = ET.ElementTree(comments_root)
     tree.write(comments_xml_path, encoding='utf-8', xml_declaration=True)
+    print(f"✅ 批注XML文件已创建: {comments_xml_path}")
 
 
 def create_document_rels(temp_dir: str):

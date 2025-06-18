@@ -336,4 +336,227 @@ def test_track_changes_with_comments():
 
 
 if __name__ == "__main__":
-    test_track_changes_with_comments() 
+    test_track_changes_with_comments()
+
+
+class ProofReaderWithCommentsAndTrackChanges:
+    """带批注的校对器 - 同时处理跟踪更改和批注，确保批注引用标记正确保存"""
+    
+    def __init__(self):
+        self.console = None
+        try:
+            from rich.console import Console
+            self.console = Console()
+        except ImportError:
+            pass
+    
+    def _print(self, message, style=""):
+        """统一的打印方法"""
+        if self.console:
+            if style:
+                self.console.print(f"[{style}]{message}[/{style}]")
+            else:
+                self.console.print(message)
+        else:
+            print(message)
+    
+    def _add_comments_to_docx_with_references(self, input_file: str, output_file: str, comments_data: list) -> bool:
+        """直接在document.xml中添加批注引用标记，然后添加comments.xml文件"""
+        try:
+            self._print(f"🔧 开始处理批注引用标记和XML: {len(comments_data)} 个批注", "cyan")
+            
+            with tempfile.TemporaryDirectory() as temp_dir:
+                # 1. 解压文档
+                with zipfile.ZipFile(input_file, 'r') as zip_ref:
+                    zip_ref.extractall(temp_dir)
+                
+                # 2. 在document.xml中添加批注引用标记
+                document_xml_path = os.path.join(temp_dir, 'word', 'document.xml')
+                if not self._add_comment_references_to_document_xml(document_xml_path, comments_data):
+                    self._print("❌ 添加批注引用标记失败", "red")
+                    return False
+                
+                # 3. 创建comments.xml文件
+                comments_xml_path = os.path.join(temp_dir, 'word', 'comments.xml')
+                if not self._create_comments_xml_file(comments_xml_path, comments_data):
+                    self._print("❌ 创建comments.xml失败", "red")
+                    return False
+                
+                # 4. 更新文档关系和内容类型
+                self._update_document_relationships(temp_dir)
+                self._update_content_types(temp_dir)
+                
+                # 5. 重新打包文档
+                with zipfile.ZipFile(output_file, 'w', zipfile.ZIP_DEFLATED) as zip_ref:
+                    for root, dirs, files in os.walk(temp_dir):
+                        for file in files:
+                            file_path = os.path.join(root, file)
+                            arc_name = os.path.relpath(file_path, temp_dir)
+                            zip_ref.write(file_path, arc_name)
+                
+                self._print(f"✅ 成功创建包含批注的文档: {output_file}", "green")
+                return True
+                
+        except Exception as e:
+            self._print(f"❌ 处理批注失败: {e}", "red")
+            import traceback
+            traceback.print_exc()
+            return False
+    
+    def _add_comment_references_to_document_xml(self, document_xml_path: str, comments_data: list) -> bool:
+        """在document.xml中添加批注引用标记"""
+        try:
+            # 读取document.xml
+            tree = ET.parse(document_xml_path)
+            root = tree.getroot()
+            
+            # 定义命名空间
+            ns = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
+            ET.register_namespace('w', ns['w'])
+            
+            # 查找所有段落
+            paragraphs = root.findall('.//w:p', ns)
+            
+            comment_id = 1
+            for comment_data in comments_data:
+                comment_text_content = comment_data.get('text', '')
+                
+                # 尝试从批注文本中提取原始文本（用于定位）
+                original_text = self._extract_original_text_from_comment(comment_text_content)
+                
+                if not original_text:
+                    self._print(f"⚠️ 无法从批注中提取原始文本: {comment_text_content[:50]}...", "yellow")
+                    continue
+                
+                # 在段落中查找原始文本并添加批注引用
+                if self._add_comment_ref_to_paragraph(paragraphs, original_text, comment_id, ns):
+                    self._print(f"✅ 已添加批注引用 {comment_id}: {original_text}", "green")
+                    comment_id += 1
+                else:
+                    self._print(f"⚠️ 未找到文本位置: {original_text}", "yellow")
+            
+            # 保存修改后的document.xml
+            tree.write(document_xml_path, encoding='utf-8', xml_declaration=True)
+            return True
+            
+        except Exception as e:
+            self._print(f"❌ 修改document.xml失败: {e}", "red")
+            return False
+    
+    def _extract_original_text_from_comment(self, comment_text: str) -> str:
+        """从批注文本中提取原始文本"""
+        try:
+            # 查找 "修订: 'xxx' →" 模式
+            if "修订: '" in comment_text and "' →" in comment_text:
+                start = comment_text.find("修订: '") + 4
+                end = comment_text.find("' →", start)
+                if start > 3 and end > start:
+                    return comment_text[start:end]
+            
+            # 查找其他可能的模式
+            if "原文：" in comment_text:
+                lines = comment_text.split('\n')
+                for line in lines:
+                    if "原文：" in line:
+                        return line.split("原文：")[1].strip()
+            
+            return ""
+        except Exception:
+            return ""
+    
+    def _add_comment_ref_to_paragraph(self, paragraphs, target_text: str, comment_id: int, ns: dict) -> bool:
+        """在段落中添加批注引用标记"""
+        try:
+            for paragraph in paragraphs:
+                # 获取段落的文本内容
+                para_text = self._get_paragraph_text(paragraph, ns)
+                
+                if target_text in para_text:
+                    # 找到包含目标文本的段落，添加批注引用标记
+                    self._insert_comment_markers(paragraph, target_text, comment_id, ns)
+                    return True
+            
+            return False
+        except Exception as e:
+            self._print(f"添加批注引用标记失败: {e}", "red")
+            return False
+    
+    def _get_paragraph_text(self, paragraph, ns: dict) -> str:
+        """获取段落的纯文本内容"""
+        text_parts = []
+        text_elements = paragraph.findall('.//w:t', ns)
+        for text_elem in text_elements:
+            if text_elem.text:
+                text_parts.append(text_elem.text)
+        return ''.join(text_parts)
+    
+    def _insert_comment_markers(self, paragraph, target_text: str, comment_id: int, ns: dict):
+        """在段落中插入批注标记"""
+        try:
+            # 创建批注范围开始标记
+            comment_range_start = ET.Element(f"{{{ns['w']}}}commentRangeStart")
+            comment_range_start.set(f"{{{ns['w']}}}id", str(comment_id))
+            
+            # 创建批注范围结束标记
+            comment_range_end = ET.Element(f"{{{ns['w']}}}commentRangeEnd")
+            comment_range_end.set(f"{{{ns['w']}}}id", str(comment_id))
+            
+            # 创建一个新的run包含批注引用
+            comment_run = ET.Element(f"{{{ns['w']}}}r")
+            comment_ref = ET.SubElement(comment_run, f"{{{ns['w']}}}commentReference")
+            comment_ref.set(f"{{{ns['w']}}}id", str(comment_id))
+            
+            # 将批注标记插入到段落的适当位置
+            # 这里简化处理，在段落末尾添加标记
+            paragraph.append(comment_range_start)
+            paragraph.append(comment_range_end)
+            paragraph.append(comment_run)
+            
+            self._print(f"✅ 批注标记已插入段落: comment_id={comment_id}", "dim")
+            
+        except Exception as e:
+            self._print(f"插入批注标记失败: {e}", "red")
+    
+    def _create_comments_xml_file(self, comments_xml_path: str, comments_data: list) -> bool:
+        """创建comments.xml文件"""
+        try:
+            try:
+                from .word_comments_xml import create_comments_xml
+            except ImportError:
+                from word_comments_xml import create_comments_xml
+            
+            # 为comments_data添加ID
+            processed_comments = []
+            for i, comment in enumerate(comments_data, 1):
+                processed_comment = comment.copy()
+                processed_comment['id'] = i
+                processed_comments.append(processed_comment)
+            
+            create_comments_xml(comments_xml_path, processed_comments)
+            return True
+            
+        except Exception as e:
+            self._print(f"创建comments.xml失败: {e}", "red")
+            return False
+    
+    def _update_document_relationships(self, temp_dir: str):
+        """更新文档关系"""
+        try:
+            try:
+                from .word_comments_xml import create_document_rels
+            except ImportError:
+                from word_comments_xml import create_document_rels
+            create_document_rels(temp_dir)
+        except Exception as e:
+            self._print(f"更新文档关系失败: {e}", "yellow")
+    
+    def _update_content_types(self, temp_dir: str):
+        """更新内容类型"""
+        try:
+            try:
+                from .word_comments_xml import update_content_types
+            except ImportError:
+                from word_comments_xml import update_content_types
+            update_content_types(temp_dir)
+        except Exception as e:
+            self._print(f"更新内容类型失败: {e}", "yellow") 

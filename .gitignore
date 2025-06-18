@@ -49,10 +49,44 @@ Thumbs.db
 # Project specific
 example_input.docx
 example_output.docx
-*.docx
+*_output*.docx
+*_temp*.docx
+*_test*.docx
 test_documents/
 proofread_documents/
 output/
 
+# Keep sample files but ignore generated outputs
+!sample_input.docx
+
 # Logs
-*.log 
+*.log
+
+# Test files and temporary files
+test_*.py
+*_test.py
+*_debug.py
+*_fix.py
+analyze_*.py
+compare_*.py
+final_*.py
+verify_*.py
+diagnose_*.py
+investigate_*.py
+check_*.py
+debug_*.py
+create_*.py
+execute_*.py
+
+# Temporary documentation
+*_FIX.md
+*_REPORT.md
+git_management.md
+使用说明.md
+校对完成报告.md
+enhanced_mode_*.md
+
+# Backup files
+*.bak
+*.backup
+*_backup.* 

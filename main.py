@@ -14,8 +14,9 @@ from proofreader import ProofReader, Config
 from proofreader.proofreader_revisions import ProofReaderWithRevisions
 from proofreader.proofreader_track_changes import ProofReaderWithTrackChanges
 from proofreader.proofreader_track_changes_enhanced import ProofReaderWithTrackChangesAndComments
+from proofreader.proofreader_track_changes_enhanced_fixed import ProofReaderWithTrackChangesAndCommentsFixed
+from proofreader.proofreader_synchronized import SynchronizedProofReader
 # from proofreader.proofreader_track_changes_enhanced_v2 import ProofReaderWithTrackChangesAndCommentsV2
-# from proofreader.proofreader_track_changes_enhanced_fixed import ProofReaderWithTrackChangesAndCommentsFixed
 
 
 console = Console()
@@ -75,7 +76,7 @@ def proofread(input_file: str, output_file: str, mode: str):
         if mode == 'enhanced':
             console.print("[blue]🌟 使用增强模式（跟踪更改+批注）进行校对...[/blue]")
             console.print("[dim]增强模式同时提供跟踪更改和详细批注，提供最完整的校对体验[/dim]")
-            proofreader = ProofReaderWithTrackChangesAndComments(api_key)
+            proofreader = ProofReaderWithTrackChangesAndCommentsFixed(api_key)
         elif mode == 'track_changes':
             console.print("[blue]🔄 使用真正的Word跟踪更改功能进行校对...[/blue]")
             console.print("[dim]真正的Word跟踪更改功能将直接在文档中显示修改，使用Word的跟踪更改功能[/dim]")
@@ -122,6 +123,8 @@ def proofread(input_file: str, output_file: str, mode: str):
     
     except Exception as e:
         console.print(f"[red]错误：{e}[/red]")
+        import traceback
+        traceback.print_exc()
 
 
 @cli.command()
@@ -270,11 +273,14 @@ Python的设计理念是优雅、明确、简单。Python开发者的哲学是"�
 def revise(input_file: str, output_file: str):
     """使用修订模式校对Word文档（快捷命令）"""
     try:
-        config = load_config()
+        api_key = get_api_key()
+        if not api_key:
+            console.print("[red]❌ 错误：未找到API密钥。请设置环境变量OPENAI_API_KEY或在配置文件中设置。[/red]")
+            return
         
         from proofreader.proofreader_revisions import ProofReaderWithRevisions
         
-        proofreader = ProofReaderWithRevisions(config.ai.api_key)
+        proofreader = ProofReaderWithRevisions(api_key)
         
         console.print("[blue]🔄 使用修订模式进行校对...[/blue]")
         console.print("[dim]修订模式将直接在文档中显示修改，使用Word的跟踪更改功能[/dim]")

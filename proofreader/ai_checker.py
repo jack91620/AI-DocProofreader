@@ -40,18 +40,25 @@ class ProofreadingResult:
 class AIChecker:
     """AI校对检查器"""
     
-    def __init__(self, config: Config):
-        self.config = config
+    def __init__(self, config_or_api_key):
+        if isinstance(config_or_api_key, str):
+            # 如果传入的是API密钥字符串，创建临时配置
+            import os
+            os.environ['OPENAI_API_KEY'] = config_or_api_key
+            self.config = Config()
+        else:
+            # 如果传入的是Config对象
+            self.config = config_or_api_key
         try:
             self.client = openai.OpenAI(
-                api_key=config.ai.api_key,
-                base_url=config.ai.base_url
+                api_key=self.config.ai.api_key,
+                base_url=self.config.ai.base_url
             )
         except Exception as e:
             # 兼容不同版本的openai库
-            openai.api_key = config.ai.api_key
+            openai.api_key = self.config.ai.api_key
             if hasattr(openai, 'api_base'):
-                openai.api_base = config.ai.base_url
+                openai.api_base = self.config.ai.base_url
             self.client = None
     
     def check_text(self, text: str) -> ProofreadingResult:
@@ -273,4 +280,34 @@ class AIChecker:
             
         except Exception as e:
             print(f"语法检查失败: {e}")
-            return [] 
+            return []
+    
+    def check_document(self, text_content: List[str]):
+        """检查整个文档"""
+        try:
+            # 将段落合并为完整文本
+            full_text = '\n'.join(text_content)
+            
+            # 使用AI进行深度校对
+            ai_result = self._ai_proofread(full_text)
+            
+            # 创建校对结果对象
+            result = ProofreadingResult()
+            
+            # 解析AI结果
+            self._parse_ai_result(ai_result, result)
+            
+            # 添加基础检查
+            if self.config.rules.check_spelling:
+                self._check_spelling(full_text, result)
+            
+            if self.config.rules.check_terminology:
+                self._check_terminology(full_text, result)
+            
+            return result
+            
+        except Exception as e:
+            print(f"文档检查失败: {e}")
+            # 返回空结果
+            result = ProofreadingResult()
+            return result 
