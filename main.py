@@ -70,8 +70,12 @@ def proofread(input_file: str, output_file: str, mode: str):
             console.print("[red]❌ 错误：未找到API密钥。请设置环境变量OPENAI_API_KEY或在配置文件中设置。[/red]")
             return
         
-        if mode == 'track_changes':
-            console.print("[blue]�� 使用真正的Word跟踪更改功能进行校对...[/blue]")
+        if mode == 'enhanced':
+            console.print("[blue]🌟 使用增强模式（跟踪更改+批注）进行校对...[/blue]")
+            console.print("[dim]增强模式将同时使用Word跟踪更改和批注功能，提供最完整的校对体验[/dim]")
+            proofreader = ProofReaderWithTrackChangesAndComments(api_key)
+        elif mode == 'track_changes':
+            console.print("[blue]🔄 使用真正的Word跟踪更改功能进行校对...[/blue]")
             console.print("[dim]真正的Word跟踪更改功能将直接在文档中显示修改，使用Word的跟踪更改功能[/dim]")
             proofreader = ProofReaderWithTrackChanges(api_key)
         elif mode == 'revisions':
@@ -83,12 +87,23 @@ def proofread(input_file: str, output_file: str, mode: str):
             console.print("[dim]批注模式将在Word审阅窗格中显示建议[/dim]")
             proofreader = ProofReader(api_key)
         
-        success = proofreader.proofread_document(input_file, output_file, mode)
+        # 根据不同模式调用相应的校对方法
+        if mode == 'enhanced':
+            success = proofreader.proofread_with_track_changes_and_comments(input_file, output_file)
+        else:
+            success = proofreader.proofread_document(input_file, output_file, mode)
         
         if success:
             console.print(f"[green]✅ 校对完成！输出文件：{output_file or input_file.replace('.docx', f'_{mode}.docx')}[/green]")
             
-            if mode == 'revisions':
+            if mode == 'enhanced':
+                console.print("[blue]📝 使用Word打开文档，体验完整的校对功能：[/blue]")
+                console.print("   - [red]删除线文本[/red] 表示需要删除的内容")
+                console.print("   - [blue underline]下划线文本[/blue underline] 表示新插入的内容")
+                console.print("   - 💬 详细的批注说明修改原因")
+                console.print("   - ✅ 可以接受或拒绝每个修改")
+                console.print("   - 🗨️ 可以回复批注进行讨论")
+            elif mode == 'revisions':
                 console.print("[blue]📝 使用Word打开文档，可以看到跟踪更改：[/blue]")
                 console.print("   - [red]删除线文本[/red] 表示需要删除的内容")
                 console.print("   - [blue underline]下划线文本[/blue underline] 表示新插入的内容")
