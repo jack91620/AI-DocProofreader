@@ -81,16 +81,30 @@ class WordTrackChangesManager:
             self._apply_changes_to_paragraph(paragraph, original_full_text, changes)
     
     def _apply_changes_to_paragraph(self, paragraph, original_text, changes):
-        """将多个更改应用到单个段落（简化版本）"""
+        """将多个更改应用到单个段落（改进版本）"""
         try:
-            # 按照在原文中的位置排序（从后往前，避免位置变化）
+            # 收集所有需要更改的位置
             changes_with_pos = []
-            for change in changes:
-                pos = original_text.find(change['original_text'])
-                if pos != -1:
-                    changes_with_pos.append((pos, change))
+            processed_positions = set()  # 避免重复处理相同位置
             
-            # 按位置降序排序
+            for change in changes:
+                original_part = change['original_text']
+                # 找到所有出现的位置
+                start = 0
+                while True:
+                    pos = original_text.find(original_part, start)
+                    if pos == -1:
+                        break
+                    
+                    # 避免重复处理相同位置的相同文本
+                    position_key = (pos, original_part)
+                    if position_key not in processed_positions:
+                        changes_with_pos.append((pos, change))
+                        processed_positions.add(position_key)
+                    
+                    start = pos + 1  # 继续查找下一个出现
+            
+            # 按位置降序排序（从后往前处理，避免位置变化）
             changes_with_pos.sort(key=lambda x: x[0], reverse=True)
             
             # 清空段落
@@ -111,12 +125,15 @@ class WordTrackChangesManager:
                 del_id = change['del_id']
                 ins_id = change['ins_id']
                 
-                # 分割文本
-                before_part = current_text[:pos]
-                after_part = current_text[pos + len(original_part):]
-                
-                # 重新组合文本
-                current_text = before_part + "@@DEL:" + str(del_id) + ":" + original_part + "@@" + "@@INS:" + str(ins_id) + ":" + corrected_part + "@@" + after_part
+                # 验证位置是否仍然有效
+                if pos + len(original_part) <= len(current_text) and current_text[pos:pos+len(original_part)] == original_part:
+                    # 分割文本
+                    before_part = current_text[:pos]
+                    after_part = current_text[pos + len(original_part):]
+                    
+                    # 重新组合文本，添加标记
+                    marker = f"@@DEL:{del_id}:{original_part}@@@@INS:{ins_id}:{corrected_part}@@"
+                    current_text = before_part + marker + after_part
             
             # 解析并构建段落
             self._build_paragraph_from_marked_text(paragraph, current_text)

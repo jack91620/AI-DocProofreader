@@ -55,7 +55,7 @@ class ProofReaderWithTrackChangesAndCommentsFixed:
             
             # 第二步：创建同步更改数据
             self.console.print("[blue]第二步：生成同步更改数据...[/blue]")
-            synchronized_changes = self._create_synchronized_changes(ai_result, text_content)
+            synchronized_changes = self._create_synchronized_changes(ai_result, text_content, doc)
             self.console.print(f"[green]✅ 发现 {len(synchronized_changes)} 个需要修改的问题[/green]")
             
             # 第三步：应用更改和批注
@@ -78,10 +78,10 @@ class ProofReaderWithTrackChangesAndCommentsFixed:
             traceback.print_exc()
             return False
 
-    def _create_synchronized_changes(self, ai_result: ProofreadingResult, text_content: list):
+    def _create_synchronized_changes(self, ai_result: ProofreadingResult, text_content: list, doc: Document):
         """创建同步的跟踪更改和批注数据"""
         synchronized_changes = []
-        processed_texts = set()  # 避免重复处理
+        processed_pairs = set()  # 避免重复处理相同的修正对
         
         self.console.print(f"[blue]🔍 处理AI发现的 {len(ai_result.issues)} 个问题和 {len(ai_result.suggestions)} 个建议[/blue]")
         
@@ -98,7 +98,8 @@ class ProofReaderWithTrackChangesAndCommentsFixed:
                 # 提取具体的词汇修正
                 corrections = self._extract_word_corrections(original_text, suggested_text)
                 for orig, corr in corrections:
-                    if orig not in processed_texts:
+                    correction_pair = (orig, corr)
+                    if correction_pair not in processed_pairs:
                         all_corrections.append({
                             'original': orig,
                             'corrected': corr,
@@ -107,7 +108,7 @@ class ProofReaderWithTrackChangesAndCommentsFixed:
                             'full_original': original_text,
                             'full_suggested': suggested_text
                         })
-                        processed_texts.add(orig)
+                        processed_pairs.add(correction_pair)
         
         # 从issues中提取修正对
         for issue in ai_result.issues:
@@ -120,7 +121,8 @@ class ProofReaderWithTrackChangesAndCommentsFixed:
                 # 处理术语不一致
                 terms = self._extract_terms_from_inconsistency(problem_text, suggestion)
                 for original_term, corrected_term in terms:
-                    if original_term not in processed_texts:
+                    correction_pair = (original_term, corrected_term)
+                    if correction_pair not in processed_pairs:
                         all_corrections.append({
                             'original': original_term,
                             'corrected': corrected_term,
@@ -128,59 +130,104 @@ class ProofReaderWithTrackChangesAndCommentsFixed:
                             'type': 'terminology',
                             'suggestion_text': suggestion
                         })
-                        processed_texts.add(original_term)
+                        processed_pairs.add(correction_pair)
             elif issue_type in ["错别字和用词不当", "标点符号使用"]:
                 # 处理错别字和标点问题
                 corrected_text = self._extract_corrected_text(suggestion)
-                if corrected_text and corrected_text != problem_text and problem_text not in processed_texts:
-                    all_corrections.append({
-                        'original': problem_text,
-                        'corrected': corrected_text,
-                        'reason': f"{issue_type} - {severity}",
-                        'type': 'error_fix',
-                        'suggestion_text': suggestion
-                    })
-                    processed_texts.add(problem_text)
+                if corrected_text and corrected_text != problem_text:
+                    correction_pair = (problem_text, corrected_text)
+                    if correction_pair not in processed_pairs:
+                        all_corrections.append({
+                            'original': problem_text,
+                            'corrected': corrected_text,
+                            'reason': f"{issue_type} - {severity}",
+                            'type': 'error_fix',
+                            'suggestion_text': suggestion
+                        })
+                        processed_pairs.add(correction_pair)
         
-        # 应用所有修正
+        # 创建段落索引映射 - 从非空段落索引到实际段落索引
+        paragraph_mapping = {}
+        text_index = 0
+        for doc_index, paragraph in enumerate(doc.paragraphs):
+            if paragraph.text.strip():
+                paragraph_mapping[text_index] = doc_index
+                text_index += 1
+        
+        # 改进的文本匹配和应用逻辑
         for correction in all_corrections:
             original = correction['original']
             corrected = correction['corrected']
             reason = correction['reason']
             corr_type = correction['type']
             
-            # 在文档中查找并应用修正
+            # 在所有段落中查找匹配项
+            matches_found = []
             for i, paragraph_text in enumerate(text_content):
-                if original in paragraph_text:
-                    if corr_type == 'suggestion':
-                        comment_text = f"💡 改进建议: {original} → {corrected}\n"
-                        comment_text += f"📋 原因: {reason}\n"
-                        comment_text += f"🎯 类型: 改进建议\n"
-                    elif corr_type == 'terminology':
-                        comment_text = f"🔍 术语不一致修正: {original} → {corrected}\n"
-                        comment_text += f"📝 理由: {reason}\n"
-                        comment_text += f"💡 建议: {correction.get('suggestion_text', '')}\n"
-                    else:
-                        comment_text = f"🔧 错误修正: {original} → {corrected}\n"
-                        comment_text += f"📝 理由: {reason}\n"
-                        comment_text += f"💡 建议: {correction.get('suggestion_text', '')}\n"
-                    
-                    comment_text += f"⏰ 处理时间: {datetime.now().strftime('%Y-%m-%d %H:%M')}"
-                    
-                    synchronized_changes.append({
-                        'paragraph_index': i,
-                        'original_text': original,
-                        'corrected_text': corrected,
-                        'comment_text': comment_text,
-                        'reason': reason,
-                        'type': corr_type
-                    })
-                    
-                    self.console.print(f"[green]✅ 添加修正: {original} → {corrected}[/green]")
-                    break
+                # 使用更精确的匹配策略
+                if self._is_text_match(original, paragraph_text):
+                    actual_paragraph_index = paragraph_mapping.get(i, i)
+                    # 计算该术语在段落中出现的次数
+                    occurrences = paragraph_text.count(original)
+                    matches_found.append((i, actual_paragraph_index, paragraph_text, occurrences))
+            
+            # 处理所有匹配项
+            if matches_found:
+                for text_idx, para_idx, para_text, occurrences in matches_found:
+                    # 为每个出现的术语创建一个修正项
+                    for occurrence in range(occurrences):
+                        # 创建批注文本
+                        if corr_type == 'suggestion':
+                            comment_text = f"💡 改进建议: {original} → {corrected}\n"
+                            comment_text += f"📋 原因: {reason}\n"
+                            comment_text += f"🎯 类型: 改进建议\n"
+                        elif corr_type == 'terminology':
+                            comment_text = f"🔍 术语不一致修正: {original} → {corrected}\n"
+                            comment_text += f"📝 理由: {reason}\n"
+                            comment_text += f"💡 建议: {correction.get('suggestion_text', '')}\n"
+                        else:
+                            comment_text = f"🔧 错误修正: {original} → {corrected}\n"
+                            comment_text += f"📝 理由: {reason}\n"
+                            comment_text += f"💡 建议: {correction.get('suggestion_text', '')}\n"
+                        
+                        comment_text += f"⏰ 处理时间: {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+                        
+                        synchronized_changes.append({
+                            'paragraph_index': para_idx,
+                            'original_text': original,
+                            'corrected_text': corrected,
+                            'comment_text': comment_text,
+                            'reason': reason,
+                            'type': corr_type,
+                            'occurrence_index': occurrence  # 添加出现次数索引
+                        })
+                        
+                        self.console.print(f"[green]✅ 添加修正: {original} → {corrected} (段落{para_idx+1}, 第{occurrence+1}次出现)[/green]")
+            else:
+                self.console.print(f"[yellow]⚠️  未找到匹配文本: {original}[/yellow]")
         
         self.console.print(f"[green]✅ 总共创建了 {len(synchronized_changes)} 个同步更改[/green]")
         return synchronized_changes
+
+    def _is_text_match(self, target_text: str, paragraph_text: str) -> bool:
+        """改进的文本匹配逻辑"""
+        # 精确匹配
+        if target_text in paragraph_text:
+            return True
+        
+        # 去除标点符号后匹配
+        import re
+        target_clean = re.sub(r'[^\w\s]', '', target_text)
+        paragraph_clean = re.sub(r'[^\w\s]', '', paragraph_text)
+        if target_clean in paragraph_clean:
+            return True
+        
+        # 分词匹配（处理术语）
+        target_words = target_text.split()
+        if len(target_words) == 1 and target_words[0] in paragraph_text:
+            return True
+        
+        return False
 
     def _apply_changes_with_proper_comments(self, doc: Document, synchronized_changes: list, output_file: str) -> bool:
         """应用更改并确保批注正确显示"""
@@ -466,38 +513,129 @@ class ProofReaderWithTrackChangesAndCommentsFixed:
     def _extract_terms_from_inconsistency(self, problem_text: str, suggestion: str):
         """从术语不一致问题中提取术语对"""
         terms = []
-        try:
-            # 从建议中提取标准术语
-            if "建议统一使用：" in suggestion:
-                standard_term = suggestion.split("建议统一使用：")[-1].strip()
-                
-                # 从问题文本中提取变体术语
-                if "发现多种术语：" in problem_text:
-                    terms_text = problem_text.split("发现多种术语：")[-1].strip()
-                    variant_terms = [term.strip() for term in terms_text.split(',')]
-                    
-                    # 为每个变体术语创建修正对
-                    for variant in variant_terms:
-                        if variant != standard_term and variant:
-                            terms.append((variant, standard_term))
+        
+        # 解析不一致术语描述
+        if "发现多种术语：" in problem_text:
+            # 提取术语列表
+            terms_part = problem_text.split("发现多种术语：")[1].strip()
+            # 移除可能的额外描述
+            if "，" in terms_part:
+                terms_part = terms_part.split("，")[0]
+            if "。" in terms_part:
+                terms_part = terms_part.split("。")[0]
             
-            return terms
-        except Exception as e:
-            self.console.print(f"[yellow]⚠️  提取术语失败: {e}[/yellow]")
-            return []
+            # 分割术语
+            term_variants = []
+            if "、" in terms_part:
+                term_variants = [t.strip().strip('"').strip("'") for t in terms_part.split("、")]
+            elif "，" in terms_part:
+                term_variants = [t.strip().strip('"').strip("'") for t in terms_part.split("，")]
+            else:
+                # 单个术语的情况
+                term_variants = [terms_part.strip().strip('"').strip("'")]
+            
+            # 从建议中提取标准术语
+            standard_term = None
+            if "建议统一使用" in suggestion:
+                standard_part = suggestion.split("建议统一使用")[1].strip()
+                if "。" in standard_part:
+                    standard_part = standard_part.split("。")[0]
+                if "，" in standard_part:
+                    standard_part = standard_part.split("，")[0]
+                standard_term = standard_part.strip().strip('"').strip("'")
+            elif "推荐使用" in suggestion:
+                standard_part = suggestion.split("推荐使用")[1].strip()
+                if "。" in standard_part:
+                    standard_part = standard_part.split("。")[0]
+                if "，" in standard_part:
+                    standard_part = standard_part.split("，")[0]
+                standard_term = standard_part.strip().strip('"').strip("'")
+            
+            # 如果找到标准术语，为每个变体创建修正对
+            if standard_term and term_variants:
+                for variant in term_variants:
+                    if variant and variant != standard_term:
+                        terms.append((variant, standard_term))
+                        self.console.print(f"[cyan]📝 术语修正: {variant} → {standard_term}[/cyan]")
+            
+            # 如果没有明确的标准术语，使用第一个作为标准
+            elif len(term_variants) > 1:
+                standard_term = term_variants[0]
+                for variant in term_variants[1:]:
+                    if variant and variant != standard_term:
+                        terms.append((variant, standard_term))
+                        self.console.print(f"[cyan]📝 术语修正: {variant} → {standard_term}[/cyan]")
+        
+        # 处理特殊的术语对
+        special_corrections = {
+            "软体工程": "软件工程",
+            "程式设计": "程序设计", 
+            "计算器科学": "计算机科学",
+            "资料结构": "数据结构",
+            "演算法": "算法"
+        }
+        
+        # 检查是否包含特殊术语
+        for original, corrected in special_corrections.items():
+            if original in problem_text or original in suggestion:
+                terms.append((original, corrected))
+                self.console.print(f"[cyan]🔧 特殊术语修正: {original} → {corrected}[/cyan]")
+        
+        return terms
 
     def _extract_corrected_text(self, suggestion: str):
         """从建议中提取修正后的文本"""
-        if "建议改为：" in suggestion:
-            return suggestion.split("建议改为：")[-1].strip()
-        elif "应为" in suggestion:
-            return suggestion.split("应为")[-1].strip().strip("'\"")
-        elif "->" in suggestion:
-            return suggestion.split("->")[-1].strip()
-        elif "改为" in suggestion:
-            return suggestion.split("改为")[-1].strip().strip("'\"")
-        else:
-            return ""
+        if not suggestion:
+            return None
+        
+        # 常见的修正模式
+        patterns = [
+            r"应为[：:]?\s*[\"']([^\"']+)[\"']",
+            r"改为[：:]?\s*[\"']([^\"']+)[\"']", 
+            r"修正为[：:]?\s*[\"']([^\"']+)[\"']",
+            r"建议改为[：:]?\s*[\"']([^\"']+)[\"']",
+            r"应该是[：:]?\s*[\"']([^\"']+)[\"']",
+            r"正确的是[：:]?\s*[\"']([^\"']+)[\"']",
+            r"→\s*[\"']([^\"']+)[\"']",
+            r"替换为[：:]?\s*[\"']([^\"']+)[\"']"
+        ]
+        
+        import re
+        for pattern in patterns:
+            match = re.search(pattern, suggestion)
+            if match:
+                corrected = match.group(1).strip()
+                self.console.print(f"[cyan]🔍 提取修正文本: {corrected}[/cyan]")
+                return corrected
+        
+        # 如果没有找到引号包围的文本，尝试其他模式
+        simple_patterns = [
+            r"应为[：:]?\s*([^\s，。]+)",
+            r"改为[：:]?\s*([^\s，。]+)",
+            r"修正为[：:]?\s*([^\s，。]+)",
+            r"建议改为[：:]?\s*([^\s，。]+)",
+            r"应该是[：:]?\s*([^\s，。]+)",
+            r"正确的是[：:]?\s*([^\s，。]+)"
+        ]
+        
+        for pattern in simple_patterns:
+            match = re.search(pattern, suggestion)
+            if match:
+                corrected = match.group(1).strip()
+                self.console.print(f"[cyan]🔍 提取修正文本: {corrected}[/cyan]")
+                return corrected
+        
+        # 处理特殊情况：直接的替换建议
+        if "→" in suggestion:
+            parts = suggestion.split("→")
+            if len(parts) >= 2:
+                corrected = parts[-1].strip().strip('"').strip("'").strip("。").strip("，")
+                if corrected:
+                    self.console.print(f"[cyan]🔍 提取修正文本: {corrected}[/cyan]")
+                    return corrected
+        
+        self.console.print(f"[yellow]⚠️  无法提取修正文本: {suggestion}[/yellow]")
+        return None
     
     def extract_text_content(self, doc: Document):
         """提取文档的文本内容"""
