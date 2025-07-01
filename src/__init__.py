@@ -11,8 +11,8 @@ AI校对助手
 - 配置管理
 """
 
-from .proofreader import ProofReader
-from .config import Config
+from proofreader import ProofReader
+from config import Config
 
 __version__ = "1.0.0"
 __author__ = "AI Assistant"

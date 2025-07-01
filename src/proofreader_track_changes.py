@@ -11,10 +11,10 @@ from rich.console import Console
 from docx import Document
 from datetime import datetime
 
-from .config import Config
-from .document import DocumentProcessor
-from .ai_checker import AIChecker, ProofreadingResult
-from .word_track_changes import WordTrackChangesManager, enable_track_changes_in_docx
+from config import Config
+from document import DocumentProcessor
+from ai_checker import AIChecker, ProofreadingResult
+from word_track_changes import WordTrackChangesManager, enable_track_changes_in_docx
 
 
 class ProofReaderWithTrackChanges:

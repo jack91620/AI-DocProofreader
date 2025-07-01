@@ -11,12 +11,12 @@ from rich.table import Table
 from docx import Document
 from datetime import datetime
 
-from .config import Config
-from .document import DocumentProcessor
-from .ai_checker import AIChecker, ProofreadingResult
-from .word_comments_advanced import WordCommentsManager
-from .word_comments_xml import add_comments_to_docx
-from .proofreader_revisions import ProofReaderWithRevisions
+from config import Config
+from document import DocumentProcessor
+from ai_checker import AIChecker, ProofreadingResult
+from word_comments_advanced import WordCommentsManager
+from word_comments_xml import add_comments_to_docx
+from proofreader_revisions import ProofReaderWithRevisions
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -63,9 +63,9 @@ class ProofReader:
             text_content = self.extract_text_content(doc)
             self.console.print(f"[blue]提取文本内容: {len(text_content)} 个段落[/blue]")
             
-            # 进行AI校对
+            # 进行AI校对 - 使用新的分块处理方法
             self.console.print("[bold]开始AI校对...")
-            ai_result = self.ai_checker.check_text(' '.join(text_content))
+            ai_result = self.ai_checker.check_text_by_paragraphs(text_content)
             
             # 转换AI校对结果为错误列表格式
             errors = self._convert_ai_result_to_errors(ai_result, text_content)
@@ -275,34 +275,72 @@ class ProofReader:
         return text_content
 
     def _convert_ai_result_to_errors(self, ai_result: ProofreadingResult, text_content: list):
-        """将AI校对结果转换为错误列表格式"""
+        """转换AI校对结果为错误列表格式 - 支持分块结果"""
         errors = []
         
-        # 处理issues
+        # 处理问题
         for issue in ai_result.issues:
-            # 找到问题文本在哪个段落
             problem_text = issue.get('text', '')
-            for i, paragraph_text in enumerate(text_content):
-                if problem_text in paragraph_text:
-                    errors.append({
-                        'paragraph_index': i,
-                        'text': problem_text,
-                        'suggestion': issue.get('suggestion', ''),
-                        'reason': f"{issue.get('type', '')} - {issue.get('severity', '')}"
-                    })
-                    break
+            suggestion = issue.get('suggestion', '')
+            issue_type = issue.get('type', '其他问题')
+            severity = issue.get('severity', 'medium')
+            chunk_info = issue.get('chunk_info', {})
+            
+            # 查找问题文本在哪个段落
+            paragraph_index = self._find_text_in_paragraphs(problem_text, text_content, chunk_info)
+            
+            errors.append({
+                'paragraph_index': paragraph_index,
+                'text': problem_text,
+                'suggestion': suggestion,
+                'reason': f"{issue_type}: {suggestion}",
+                'type': issue_type,
+                'severity': severity,
+                'chunk_info': chunk_info
+            })
         
-        # 处理suggestions
+        # 处理建议
         for suggestion in ai_result.suggestions:
             original_text = suggestion.get('original', '')
-            for i, paragraph_text in enumerate(text_content):
-                if original_text in paragraph_text:
-                    errors.append({
-                        'paragraph_index': i,
-                        'text': original_text,
-                        'suggestion': suggestion.get('suggested', ''),
-                        'reason': suggestion.get('reason', '')
-                    })
-                    break
+            suggested_text = suggestion.get('suggested', '')
+            reason = suggestion.get('reason', '')
+            chunk_info = suggestion.get('chunk_info', {})
+            
+            if original_text and suggested_text:
+                # 查找原文本在哪个段落
+                paragraph_index = self._find_text_in_paragraphs(original_text, text_content, chunk_info)
+                
+                errors.append({
+                    'paragraph_index': paragraph_index,
+                    'text': original_text,
+                    'suggestion': suggested_text,
+                    'reason': reason,
+                    'type': '改进建议',
+                    'severity': 'low',
+                    'chunk_info': chunk_info
+                })
         
-        return errors 
+        return errors
+    
+    def _find_text_in_paragraphs(self, target_text: str, text_content: list, chunk_info: dict) -> int:
+        """在段落中查找目标文本的位置 - 支持分块信息"""
+        if not target_text.strip():
+            return 0
+        
+        # 如果有块信息，优先在指定范围内查找
+        if chunk_info:
+            start_para = chunk_info.get('start_paragraph', 0)
+            end_para = chunk_info.get('end_paragraph', len(text_content) - 1)
+            
+            # 在指定范围内查找
+            for i in range(start_para, min(end_para + 1, len(text_content))):
+                if target_text in text_content[i]:
+                    return i
+        
+        # 如果没有找到或没有块信息，在全文中查找
+        for i, paragraph_text in enumerate(text_content):
+            if target_text in paragraph_text:
+                return i
+        
+        # 如果没有找到，返回第一个段落的索引
+        return 0 

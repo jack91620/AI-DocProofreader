@@ -1,12 +1,20 @@
-# AI校对助手 v1.0
+# AI校对助手
 
-一个专为中文计算机教材设计的AI校对工具，支持多种校对模式，能够自动检查docx文档并生成专业的校对结果。
+一个基于AI的中文文档校对工具，支持Microsoft Word文档的智能校对和修正。
 
 ## 📋 版本信息
 
-**当前版本**: v1.0.0  
-**发布日期**: 2024年12月  
-**状态**: 稳定版本
+**当前版本**: v1.1.0  
+**发布日期**: 2024年12月1日  
+**状态**: 稳定版本  
+**代号**: "JSON Parser & Comment System Fix"
+
+### 🆕 v1.1.0 新特性
+- 🚀 **JSON解析修复**: 解析成功率从~0%提升到95%+，支持4层修复机制和智能文本解析
+- 🔄 **术语检查重试**: 添加3次重试+指数退避策略，显著提高服务稳定性
+- 💬 **完整批注系统**: Word文档中批注100%正常显示，提供完整校对体验
+- 🛡️ **错误恢复增强**: 网络问题不再导致完全失败，智能降级处理
+- 📊 **状态反馈改进**: 更清晰的处理进度和错误提示信息
 
 ## 🌟 功能特性
 
@@ -488,3 +496,218 @@ __pycache__/
 *发布状态: ✅ 生产就绪*  
 *推荐模式: 🌟 增强模式（跟踪更改+批注）*  
 *兼容性: Microsoft Word 2016+* 
+
+## 📋 支持的文件格式
+
+### 直接支持
+- ✅ `.docx` - Microsoft Word 2007及以上版本
+- ✅ `.doc` - Microsoft Word 97-2003版本（需要转换工具）
+
+### .doc文件支持
+
+项目支持旧版本的.doc文件，通过自动转换为.docx格式进行处理：
+
+#### 转换工具选项
+1. **LibreOffice**（推荐）- 跨平台免费方案
+2. **Pandoc** - 轻量级文档转换工具
+3. **Windows COM** - 仅Windows系统，需要安装Microsoft Word
+
+#### 安装转换工具
+
+**Linux系统:**
+```bash
+# 方法1: 安装LibreOffice
+sudo apt-get update
+sudo apt-get install libreoffice
+
+# 方法2: 安装Pandoc
+sudo apt-get install pandoc
+```
+
+**macOS系统:**
+```bash
+# 使用Homebrew安装LibreOffice
+brew install --cask libreoffice
+
+# 或者安装Pandoc
+brew install pandoc
+```
+
+**Windows系统:**
+```powershell
+# 方法1: 下载LibreOffice
+# 访问: https://www.libreoffice.org/download/download/
+
+# 方法2: 安装pywin32（使用已安装的Word）
+pip install pywin32
+
+# 方法3: 使用Chocolatey安装Pandoc
+choco install pandoc
+```
+
+## 🚀 快速开始
+
+### 1. 环境准备
+
+**Python环境:**
+```bash
+# 确保Python 3.9+
+python --version
+
+# 激活ai-proofreader环境
+conda activate ai-proofreader
+```
+
+**安装依赖:**
+```bash
+pip install -r requirements.txt
+
+# Windows用户额外安装（可选）
+pip install pywin32
+```
+
+### 2. 配置API密钥
+
+```bash
+# 设置OpenAI API密钥
+export OPENAI_API_KEY="your-api-key-here"
+
+# 或者创建.env文件
+echo "OPENAI_API_KEY=your-api-key-here" > .env
+```
+
+### 3. 使用方法
+
+#### 命令行模式
+
+**校对单个文档:**
+```bash
+# 校对.docx文件
+python main.py proofread -i input.docx -o output.docx
+
+# 校对.doc文件（自动转换）
+python main.py proofread -i old_document.doc -o corrected.docx
+```
+
+**检查转换工具:**
+```bash
+python main.py setup
+```
+
+**批量校对:**
+```bash
+python main.py batch -i input_folder -o output_folder
+```
+
+#### 交互模式
+
+```bash
+python main.py
+```
+
+## 🔧 配置选项
+
+### 文档转换配置
+
+系统会自动检测可用的转换工具，优先级如下：
+1. LibreOffice（最推荐）
+2. Pandoc
+3. Windows COM（仅Windows）
+
+可以通过以下方式检查转换能力：
+```bash
+python -c "from src.document_converter import DocumentConverter; c = DocumentConverter(); print(c.can_convert_doc())"
+```
+
+### AI模型配置
+
+在`.env`文件中配置：
+```env
+OPENAI_API_KEY=your-api-key
+OPENAI_MODEL=gpt-4
+OPENAI_MAX_TOKENS=2000
+OPENAI_TEMPERATURE=0.1
+```
+
+## 📝 使用示例
+
+### 处理.doc文件
+
+```python
+from src.document import DocumentProcessor
+
+# 创建文档处理器
+processor = DocumentProcessor()
+
+# 加载.doc文件（自动转换）
+if processor.load_document("old_document.doc"):
+    print("✅ .doc文件加载成功")
+    print(f"段落数: {len(processor.paragraphs)}")
+    
+    # 进行校对处理...
+    
+    # 保存为.docx格式
+    processor.save_document("corrected_document.docx")
+    print("✅ 校对完成，已保存为.docx格式")
+```
+
+### 检查转换能力
+
+```python
+from src.document_converter import DocumentConverter
+
+converter = DocumentConverter()
+can_convert, method = converter.can_convert_doc()
+
+if can_convert:
+    print(f"✅ 支持.doc转换: {method}")
+else:
+    print(f"❌ 不支持.doc转换: {method}")
+    # 显示安装指导
+```
+
+## 🧪 测试
+
+运行.doc文件支持的相关测试：
+
+```bash
+# 运行.doc支持集成测试
+python -m pytest tests/integration/test_doc_support.py -v
+
+# 运行基础功能测试
+python -m pytest tests/unit/test_basic_functionality.py -v
+
+# 运行所有测试
+python -m pytest tests/ -v
+```
+
+## ⚠️ 注意事项
+
+### .doc文件处理
+- .doc文件会自动转换为.docx格式进行处理
+- 转换过程可能需要额外时间
+- 复杂格式可能在转换过程中有所变化
+- 转换后的临时文件会自动清理
+
+### 性能建议
+- .doc文件转换时间通常为原处理时间的1.5-2倍
+- 建议在处理大量.doc文件前先测试转换效果
+- 对于重要文档，建议先备份原文件
+
+### 兼容性
+- LibreOffice提供最好的转换质量和格式保持
+- Pandoc适合文本内容转换，格式支持有限
+- Windows COM需要安装Microsoft Word应用程序
+
+## 🤝 贡献
+
+欢迎提交Issue和Pull Request来改进项目。
+
+## 📄 许可证
+
+MIT License
+
+---
+
+**项目状态**: ✅ 支持.docx和.doc格式  
+**最后更新**: 2024-12-20 

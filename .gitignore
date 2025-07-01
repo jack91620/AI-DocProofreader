@@ -58,6 +58,7 @@ output/
 
 # Keep sample files but ignore generated outputs
 !sample_input.docx
+*.docx
 
 # Logs
 *.log

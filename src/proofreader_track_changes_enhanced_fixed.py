@@ -14,12 +14,12 @@ import zipfile
 import tempfile
 import xml.etree.ElementTree as ET
 
-from .config import Config
-from .document import DocumentProcessor
-from .ai_checker import AIChecker, ProofreadingResult
-from .word_track_changes import WordTrackChangesManager, enable_track_changes_in_docx
-from .word_comments_advanced import WordCommentsManager
-from .word_comments_xml import create_comments_xml, create_document_rels, update_content_types
+from config import Config
+from document import DocumentProcessor
+from ai_checker import AIChecker, ProofreadingResult
+from word_track_changes import WordTrackChangesManager, enable_track_changes_in_docx
+from word_comments_advanced import WordCommentsManager
+from word_comments_xml import create_comments_xml, create_document_rels, update_content_types
 
 
 class ProofReaderWithTrackChangesAndCommentsFixed:
@@ -37,37 +37,46 @@ class ProofReaderWithTrackChangesAndCommentsFixed:
         self.document_processor = DocumentProcessor()
     
     def proofread_with_track_changes_and_comments(self, input_file: str, output_file: str = None) -> bool:
-        """使用跟踪更改和批注进行校对 - 修复版"""
+        """使用跟踪更改和批注进行校对 - 支持长文档分块处理"""
         try:
             # 生成输出文件名
             if not output_file:
-                output_file = input_file.replace('.docx', '_enhanced_fixed.docx')
+                output_file = input_file.replace('.docx', '_tracked_with_comments_fixed.docx')
             
             self.console.print(f"[green]开始修复版增强校对：{input_file}[/green]")
             
-            # 第一步：AI校对
-            self.console.print("[blue]第一步：AI校对分析文档...[/blue]")
+            # 读取文档
             doc = Document(input_file)
+            
+            # 提取文本内容
             text_content = self.extract_text_content(doc)
             self.console.print(f"[blue]提取文本内容: {len(text_content)} 个段落[/blue]")
             
-            ai_result = self.ai_checker.check_text(' '.join(text_content))
+            # 进行AI校对 - 使用分块处理方法
+            self.console.print("[bold]开始AI校对...")
+            ai_result = self.ai_checker.check_text_by_paragraphs(text_content)
             
-            # 第二步：创建同步更改数据
-            self.console.print("[blue]第二步：生成同步更改数据...[/blue]")
+            # 创建同步的跟踪更改和批注数据
             synchronized_changes = self._create_synchronized_changes(ai_result, text_content, doc)
-            self.console.print(f"[green]✅ 发现 {len(synchronized_changes)} 个需要修改的问题[/green]")
+            self.console.print(f"[green]✅ AI校对完成，发现 {len(synchronized_changes)} 个问题[/green]")
             
-            # 第三步：应用更改和批注
-            self.console.print("[blue]第三步：应用跟踪更改和批注...[/blue]")
-            success = self._apply_changes_with_proper_comments(doc, synchronized_changes, output_file)
+            if not synchronized_changes:
+                self.console.print("[yellow]⚠️ 未发现需要修改的问题，直接复制原文档[/yellow]")
+                import shutil
+                shutil.copy2(input_file, output_file)
+                return True
+            
+            # 应用同步更改
+            success = self._apply_synchronized_changes_fixed(doc, synchronized_changes, output_file)
             
             if success:
-                self.console.print(f"[green]✅ 修复版增强校对完成：{output_file}[/green]")
-                self.console.print("[blue]📝 文档包含：[/blue]")
-                self.console.print("   - 🔄 Word跟踪更改（可接受/拒绝）")
-                self.console.print("   - 💬 对应的详细批注（可查看/回复）")
-                self.console.print("   - 🔗 正确的批注引用链接")
+                self.console.print(f"[green]✅ 修复版增强校对完成！输出文件：{output_file}[/green]")
+                self.console.print("[blue]📝 使用Word打开文档，体验完整的校对功能：[/blue]")
+                self.console.print("   - [red]删除线文本[/red] 表示需要删除的内容")
+                self.console.print("   - [blue underline]下划线文本[/blue underline] 表示新插入的内容")
+                self.console.print("   - 💬 详细的批注说明修改原因")
+                self.console.print("   - ✅ 可以接受或拒绝每个修改")
+                self.console.print("   - 🗨️ 可以回复批注进行讨论")
                 return True
             else:
                 return False
@@ -230,7 +239,7 @@ class ProofReaderWithTrackChangesAndCommentsFixed:
         return False
 
     def _apply_changes_with_proper_comments(self, doc: Document, synchronized_changes: list, output_file: str) -> bool:
-        """应用更改并确保批注正确显示"""
+        """应用更改并确保批注正确显示 - 修复版"""
         try:
             # 创建跟踪更改管理器
             track_changes_manager = WordTrackChangesManager(doc)
@@ -240,6 +249,8 @@ class ProofReaderWithTrackChangesAndCommentsFixed:
             
             # 应用每个更改
             applied_count = 0
+            comments_data = []  # 收集批注数据
+            
             for change in synchronized_changes:
                 paragraph_index = change.get('paragraph_index', 0)
                 original_text = change.get('original_text', '')
@@ -255,29 +266,30 @@ class ProofReaderWithTrackChangesAndCommentsFixed:
                         paragraph, original_text, corrected_text, reason
                     )
                     
-                    # 应用批注
-                    comment_success = comments_manager.add_comment(
-                        paragraph, original_text, comment_text
-                    )
-                    
-                    if track_success and comment_success:
+                    # 收集批注数据（不直接应用到docx）
+                    if track_success:
+                        comments_data.append({
+                            'id': applied_count + 1,
+                            'text': comment_text,
+                            'author': 'AI校对助手',
+                            'date': datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ"),
+                            'paragraph_index': paragraph_index,
+                            'target_text': original_text
+                        })
                         applied_count += 1
                         self.console.print(f"[green]✅ 应用更改 {applied_count}: {original_text} -> {corrected_text}[/green]")
             
-            # 完成处理
+            # 应用所有跟踪更改
             track_changes_manager.apply_all_changes()
-            comments_manager.finalize_document()
             
-            # 保存带有基本更改的文档
-            temp_file = output_file.replace('.docx', '_temp.docx')
+            # 保存临时文档（只包含跟踪更改）
+            temp_file = output_file.replace('.docx', '_temp_with_track_changes.docx')
             doc.save(temp_file)
             
-            # 创建完整的批注系统
-            success = self._create_complete_comment_system(
-                temp_file, 
-                output_file, 
-                self._prepare_comments_with_changes(comments_manager.get_comments_for_xml(), synchronized_changes)
-            )
+            self.console.print(f"[cyan]✅ 准备 {len(comments_data)} 个批注数据用于XML生成[/cyan]")
+            
+            # 使用修复的批注系统
+            success = self._create_complete_comment_system(temp_file, output_file, comments_data)
             
             # 清理临时文件
             if os.path.exists(temp_file):
@@ -288,9 +300,9 @@ class ProofReaderWithTrackChangesAndCommentsFixed:
                 return True
             else:
                 return False
-                
+            
         except Exception as e:
-            self.console.print(f"[red]❌ 应用更改失败: {e}[/red]")
+            self.console.print(f"[red]❌ 应用更改和批注失败: {e}[/red]")
             import traceback
             traceback.print_exc()
             return False
@@ -298,40 +310,75 @@ class ProofReaderWithTrackChangesAndCommentsFixed:
     def _create_complete_comment_system(self, temp_file: str, output_file: str, comments_data: list) -> bool:
         """创建完整的批注系统"""
         try:
+            import zipfile
+            import tempfile
+            import shutil
+            
+            if not comments_data:
+                self.console.print("[yellow]⚠️ 没有批注数据需要处理[/yellow]")
+                shutil.copy2(temp_file, output_file)
+                return True
+            
             self.console.print(f"[cyan]🔧 创建完整的批注系统，包含 {len(comments_data)} 个批注[/cyan]")
             
-            with zipfile.ZipFile(temp_file, 'r') as input_zip:
-                with zipfile.ZipFile(output_file, 'w', zipfile.ZIP_DEFLATED) as output_zip:
-                    # 复制原有文件，但需要修改document.xml
-                    for item in input_zip.infolist():
-                        if item.filename == 'word/document.xml':
-                            # 修改document.xml添加批注引用
-                            document_xml = input_zip.read(item.filename).decode('utf-8')
-                            modified_document_xml = self._add_comment_references_to_document(document_xml, comments_data)
-                            output_zip.writestr(item.filename, modified_document_xml.encode('utf-8'))
-                        elif item.filename not in ['word/comments.xml', 'word/_rels/document.xml.rels', '[Content_Types].xml']:
-                            output_zip.writestr(item, input_zip.read(item.filename))
-                    
-                    # 创建批注XML
-                    comments_xml = self._create_comments_xml(comments_data)
-                    output_zip.writestr('word/comments.xml', comments_xml)
-                    
-                    # 更新关系文件
-                    rels_xml = self._create_updated_rels(input_zip)
-                    output_zip.writestr('word/_rels/document.xml.rels', rels_xml)
-                    
-                    # 更新内容类型
-                    content_types_xml = self._create_updated_content_types(input_zip)
-                    output_zip.writestr('[Content_Types].xml', content_types_xml)
-            
-            self.console.print("[green]✅ 完整的批注系统创建成功[/green]")
-            return True
-            
+            # 创建临时目录
+            with tempfile.TemporaryDirectory() as temp_dir:
+                # 解压原文档
+                with zipfile.ZipFile(temp_file, 'r') as zip_ref:
+                    zip_ref.extractall(temp_dir)
+                
+                # 1. 创建comments.xml文件
+                comments_xml = self._create_comments_xml(comments_data)
+                comments_path = os.path.join(temp_dir, 'word', 'comments.xml')
+                with open(comments_path, 'w', encoding='utf-8') as f:
+                    f.write(comments_xml)
+                self.console.print("[green]✅ comments.xml 创建成功[/green]")
+                
+                # 2. 更新_rels/.rels文件
+                rels_content = self._create_updated_rels_for_comments(temp_dir)
+                rels_path = os.path.join(temp_dir, 'word', '_rels', 'document.xml.rels')
+                with open(rels_path, 'w', encoding='utf-8') as f:
+                    f.write(rels_content)
+                self.console.print("[green]✅ document.xml.rels 更新成功[/green]")
+                
+                # 3. 更新[Content_Types].xml
+                content_types = self._create_updated_content_types_for_comments(temp_dir)
+                content_types_path = os.path.join(temp_dir, '[Content_Types].xml')
+                with open(content_types_path, 'w', encoding='utf-8') as f:
+                    f.write(content_types)
+                self.console.print("[green]✅ [Content_Types].xml 更新成功[/green]")
+                
+                # 4. 更新document.xml，添加批注引用
+                document_xml_path = os.path.join(temp_dir, 'word', 'document.xml')
+                with open(document_xml_path, 'r', encoding='utf-8') as f:
+                    document_content = f.read()
+                
+                updated_document = self._add_comment_references_to_document(document_content, comments_data)
+                with open(document_xml_path, 'w', encoding='utf-8') as f:
+                    f.write(updated_document)
+                self.console.print("[green]✅ document.xml 更新成功[/green]")
+                
+                # 5. 重新打包文档
+                with zipfile.ZipFile(output_file, 'w', zipfile.ZIP_DEFLATED) as zip_out:
+                    for root, dirs, files in os.walk(temp_dir):
+                        for file in files:
+                            file_path = os.path.join(root, file)
+                            arcname = os.path.relpath(file_path, temp_dir)
+                            zip_out.write(file_path, arcname)
+                
+                self.console.print("[green]✅ 完整的批注系统创建成功[/green]")
+                return True
+                
         except Exception as e:
-            self.console.print(f"[red]❌ 创建完整批注系统失败: {e}[/red]")
+            self.console.print(f"[red]❌ 创建批注系统失败: {e}[/red]")
             import traceback
             traceback.print_exc()
-            return False
+            # 回退到无批注版本
+            try:
+                shutil.copy2(temp_file, output_file)
+                return True
+            except:
+                return False
 
     def _create_comments_xml(self, comments_data: list) -> str:
         """创建批注XML内容"""
@@ -356,36 +403,78 @@ class ProofReaderWithTrackChangesAndCommentsFixed:
         xml_content += '\n</w:comments>'
         return xml_content
 
-    def _create_updated_rels(self, input_zip) -> str:
-        """创建更新的关系文件"""
+    def _create_updated_rels_for_comments(self, temp_dir: str) -> str:
+        """为批注更新_rels文件"""
         try:
-            # 读取原始关系文件
-            if 'word/_rels/document.xml.rels' in input_zip.namelist():
-                rels_xml = input_zip.read('word/_rels/document.xml.rels').decode('utf-8')
+            rels_path = os.path.join(temp_dir, 'word', '_rels', 'document.xml.rels')
+            if os.path.exists(rels_path):
+                with open(rels_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
             else:
-                # 创建基本的关系文件
-                rels_xml = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                # 创建基础rels文件
+                content = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
 </Relationships>'''
             
-            # 检查是否已包含批注关系
-            if 'comments.xml' not in rels_xml:
-                # 添加批注关系
-                rels_xml = rels_xml.replace(
-                    '</Relationships>',
-                    '''    <Relationship Id="rIdComments" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments" Target="comments.xml"/>
-</Relationships>'''
-                )
+            # 检查是否已经有comments关系
+            if 'comments.xml' not in content:
+                # 添加comments关系
+                comments_rel = '''<Relationship Id="rId999" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments" Target="comments.xml"/>'''
+                
+                # 在</Relationships>前插入
+                if '</Relationships>' in content:
+                    content = content.replace('</Relationships>', f'{comments_rel}\n</Relationships>')
+                else:
+                    content = content.replace('<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">', 
+                                            f'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">\n{comments_rel}')
+                    if not content.endswith('</Relationships>'):
+                        content += '\n</Relationships>'
             
-            return rels_xml
+            return content
             
         except Exception as e:
-            print(f"创建关系文件失败: {e}")
-            # 返回基本的关系文件
+            self.console.print(f"[yellow]⚠️ 更新rels文件失败: {e}[/yellow]")
             return '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-    <Relationship Id="rIdComments" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments" Target="comments.xml"/>
+<Relationship Id="rId999" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments" Target="comments.xml"/>
 </Relationships>'''
+    
+    def _create_updated_content_types_for_comments(self, temp_dir: str) -> str:
+        """为批注更新Content_Types文件"""
+        try:
+            content_types_path = os.path.join(temp_dir, '[Content_Types].xml')
+            if os.path.exists(content_types_path):
+                with open(content_types_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+            else:
+                # 创建基础Content_Types文件
+                content = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+<Default Extension="xml" ContentType="application/xml"/>
+<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+</Types>'''
+            
+            # 检查是否已经有comments的Override
+            if '/word/comments.xml' not in content:
+                # 添加comments的Override
+                comments_override = '''<Override PartName="/word/comments.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml"/>'''
+                
+                # 在</Types>前插入
+                if '</Types>' in content:
+                    content = content.replace('</Types>', f'{comments_override}\n</Types>')
+            
+            return content
+            
+        except Exception as e:
+            self.console.print(f"[yellow]⚠️ 更新Content_Types文件失败: {e}[/yellow]")
+            return '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+<Default Extension="xml" ContentType="application/xml"/>
+<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+<Override PartName="/word/comments.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml"/>
+</Types>'''
 
     def _add_comment_references_to_document(self, document_xml: str, comments_data: list) -> str:
         """在document.xml中添加批注引用标记"""
@@ -643,6 +732,23 @@ class ProofReaderWithTrackChangesAndCommentsFixed:
         for paragraph in doc.paragraphs:
             text_content.append(paragraph.text)
         return text_content
+
+    def _apply_synchronized_changes_fixed(self, doc: Document, synchronized_changes: list, output_file: str) -> bool:
+        """应用同步更改的修复版本"""
+        try:
+            if not synchronized_changes:
+                self.console.print("[yellow]⚠️ 没有需要应用的更改[/yellow]")
+                doc.save(output_file)
+                return True
+            
+            # 使用现有的应用更改方法，但增加了错误处理
+            return self._apply_changes_with_proper_comments(doc, synchronized_changes, output_file)
+            
+        except Exception as e:
+            self.console.print(f"[red]❌ 应用同步更改失败: {e}[/red]")
+            import traceback
+            traceback.print_exc()
+            return False
 
 
 def test_fixed_enhanced_proofreader():

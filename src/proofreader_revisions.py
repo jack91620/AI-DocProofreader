@@ -11,10 +11,10 @@ from rich.console import Console
 from docx import Document
 from datetime import datetime
 
-from .config import Config
-from .document import DocumentProcessor
-from .ai_checker import AIChecker, ProofreadingResult
-from .word_revisions import SimpleWordRevisionsManager
+from config import Config
+from document import DocumentProcessor
+from ai_checker import AIChecker, ProofreadingResult
+from word_revisions import SimpleWordRevisionsManager
 
 
 class ProofReaderWithRevisions:
@@ -31,13 +31,13 @@ class ProofReaderWithRevisions:
         self.document_processor = DocumentProcessor()
     
     def proofread_document_with_revisions(self, input_file: str, output_file: str = None) -> bool:
-        """校对文档并使用修订功能显示更改"""
+        """使用修订模式进行校对 - 支持长文档分块处理"""
         try:
             # 生成输出文件名
             if not output_file:
                 output_file = input_file.replace('.docx', '_revised.docx')
             
-            self.console.print(f"[green]开始修订校对：{input_file}[/green]")
+            self.console.print(f"[green]开始修订模式校对：{input_file}[/green]")
             
             # 读取文档
             doc = Document(input_file)
@@ -49,26 +49,37 @@ class ProofReaderWithRevisions:
             text_content = self.extract_text_content(doc)
             self.console.print(f"[blue]提取文本内容: {len(text_content)} 个段落[/blue]")
             
-            # 进行AI校对
+            # 进行AI校对 - 使用分块处理方法
             self.console.print("[bold]开始AI校对...")
-            ai_result = self.ai_checker.check_text(' '.join(text_content))
+            ai_result = self.ai_checker.check_text_by_paragraphs(text_content)
             
             # 转换AI校对结果为修订格式
             revisions = self._convert_ai_result_to_revisions(ai_result, text_content)
             self.console.print(f"[green]✅ AI校对完成，发现 {len(revisions)} 个需要修订的问题[/green]")
             
+            if not revisions:
+                self.console.print("[yellow]⚠️ 未发现需要修改的问题，直接复制原文档[/yellow]")
+                import shutil
+                shutil.copy2(input_file, output_file)
+                return True
+            
             # 应用修订
             revision_count = self.apply_revisions(doc, revisions, revisions_manager)
             
+            # 应用所有修订到文档
+            self.console.print("[blue]正在应用所有修订到文档...[/blue]")
+            revisions_manager.apply_all_revisions()
+            
             # 保存文档
             doc.save(output_file)
-            self.console.print(f"[green]✅ 修订校对完成，输出文件: {output_file}[/green]")
-            self.console.print(f"[blue]📝 已应用 {revision_count} 个修订，修改内容在Word中显示为跟踪更改[/blue]")
+            
+            self.console.print(f"[green]✅ 修订模式校对完成！输出文件：{output_file}[/green]")
+            self.console.print(f"[blue]📝 成功应用了 {revision_count} 个修订[/blue]")
             
             return True
             
         except Exception as e:
-            self.console.print(f"[red]❌ 修订校对失败: {e}[/red]")
+            self.console.print(f"[red]❌ 修订模式校对失败: {e}[/red]")
             return False
     
     def apply_revisions(self, doc: Document, revisions: list, revisions_manager: SimpleWordRevisionsManager):
@@ -95,47 +106,72 @@ class ProofReaderWithRevisions:
         return revision_count
     
     def _convert_ai_result_to_revisions(self, ai_result: ProofreadingResult, text_content: list):
-        """将AI校对结果转换为修订格式"""
+        """转换AI校对结果为修订格式 - 支持分块结果"""
         revisions = []
         
-        # 处理issues
+        # 处理问题
         for issue in ai_result.issues:
             problem_text = issue.get('text', '')
             suggestion = issue.get('suggestion', '')
+            chunk_info = issue.get('chunk_info', {})
             
-            # 提取修正后的文本
-            corrected_text = self._extract_corrected_text(suggestion)
-            
-            # 找到问题文本在哪个段落
-            for i, paragraph_text in enumerate(text_content):
-                if problem_text in paragraph_text:
-                    revisions.append({
-                        'paragraph_index': i,
-                        'original_text': problem_text,
-                        'corrected_text': corrected_text,
-                        'reason': f"{issue.get('type', '')} - {issue.get('severity', '')}"
-                    })
-                    break
+            if problem_text and suggestion:
+                # 查找问题文本在哪个段落
+                paragraph_index = self._find_text_in_paragraphs(problem_text, text_content, chunk_info)
+                
+                revisions.append({
+                    'paragraph_index': paragraph_index,
+                    'original_text': problem_text,
+                    'revised_text': self._extract_revision_text(suggestion),
+                    'reason': f"{issue.get('type', '')}: {suggestion}",
+                    'chunk_info': chunk_info
+                })
         
-        # 处理suggestions
+        # 处理建议
         for suggestion in ai_result.suggestions:
             original_text = suggestion.get('original', '')
             suggested_text = suggestion.get('suggested', '')
+            reason = suggestion.get('reason', '')
+            chunk_info = suggestion.get('chunk_info', {})
             
-            # 找到原文本在哪个段落
-            for i, paragraph_text in enumerate(text_content):
-                if original_text in paragraph_text:
-                    revisions.append({
-                        'paragraph_index': i,
-                        'original_text': original_text,
-                        'corrected_text': suggested_text,
-                        'reason': suggestion.get('reason', '')
-                    })
-                    break
+            if original_text and suggested_text:
+                # 查找原文本在哪个段落
+                paragraph_index = self._find_text_in_paragraphs(original_text, text_content, chunk_info)
+                
+                revisions.append({
+                    'paragraph_index': paragraph_index,
+                    'original_text': original_text,
+                    'revised_text': suggested_text,
+                    'reason': reason,
+                    'chunk_info': chunk_info
+                })
         
         return revisions
     
-    def _extract_corrected_text(self, suggestion: str):
+    def _find_text_in_paragraphs(self, target_text: str, text_content: list, chunk_info: dict) -> int:
+        """在段落中查找目标文本的位置 - 支持分块信息"""
+        if not target_text.strip():
+            return 0
+        
+        # 如果有块信息，优先在指定范围内查找
+        if chunk_info:
+            start_para = chunk_info.get('start_paragraph', 0)
+            end_para = chunk_info.get('end_paragraph', len(text_content) - 1)
+            
+            # 在指定范围内查找
+            for i in range(start_para, min(end_para + 1, len(text_content))):
+                if target_text in text_content[i]:
+                    return i
+        
+        # 如果没有找到或没有块信息，在全文中查找
+        for i, paragraph_text in enumerate(text_content):
+            if target_text in paragraph_text:
+                return i
+        
+        # 如果没有找到，返回第一个段落的索引
+        return 0
+    
+    def _extract_revision_text(self, suggestion: str):
         """从建议中提取修正后的文本"""
         # 尝试从建议中提取修正文本
         if "建议改为：" in suggestion:

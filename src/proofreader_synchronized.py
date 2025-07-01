@@ -15,10 +15,10 @@ import tempfile
 import xml.etree.ElementTree as ET
 import re
 
-from .config import Config
-from .document import DocumentProcessor
-from .ai_checker import AIChecker, ProofreadingResult
-from .word_comments_xml import create_comments_xml, create_document_rels, update_content_types
+from config import Config
+from document import DocumentProcessor
+from ai_checker import AIChecker, ProofreadingResult
+from word_comments_xml import create_comments_xml, create_document_rels, update_content_types
 
 
 class SynchronizedProofReader:

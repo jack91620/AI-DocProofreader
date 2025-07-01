@@ -15,12 +15,13 @@ from pathlib import Path
 src_path = Path(__file__).parent / "src" 
 sys.path.insert(0, str(src_path))
 
-from proofreader import ProofReader, Config
-from proofreader.proofreader_revisions import ProofReaderWithRevisions
-from proofreader.proofreader_track_changes import ProofReaderWithTrackChanges
-from proofreader.proofreader_track_changes_enhanced import ProofReaderWithTrackChangesAndComments
-from proofreader.proofreader_track_changes_enhanced_fixed import ProofReaderWithTrackChangesAndCommentsFixed
-from proofreader.proofreader_synchronized import SynchronizedProofReader
+from src.proofreader import ProofReader
+from src.config import Config
+from src.proofreader_revisions import ProofReaderWithRevisions
+from src.proofreader_track_changes import ProofReaderWithTrackChanges
+from src.proofreader_track_changes_enhanced import ProofReaderWithTrackChangesAndComments
+from src.proofreader_track_changes_enhanced_fixed import ProofReaderWithTrackChangesAndCommentsFixed
+from src.proofreader_synchronized import SynchronizedProofReader
 # from proofreader.proofreader_track_changes_enhanced_v2 import ProofReaderWithTrackChangesAndCommentsV2
 
 
@@ -70,13 +71,21 @@ def cli():
 @click.option('-o', '--output', 'output_file', help='输出Word文档路径')
 @click.option('-m', '--mode', default='comments', type=click.Choice(['comments', 'revisions', 'track_changes', 'enhanced']), 
               help='校对模式：comments（批注模式）、revisions（修订模式）、track_changes（跟踪更改）、enhanced（跟踪更改+批注）')
-def proofread(input_file: str, output_file: str, mode: str):
-    """校对Word文档"""
+@click.option('--show-chunks', is_flag=True, help='显示文档分块处理信息')
+def proofread(input_file: str, output_file: str, mode: str, show_chunks: bool):
+    """校对Word文档 - 支持长文档自动分块处理"""
     try:
         api_key = get_api_key()
         if not api_key:
             console.print("[red]❌ 错误：未找到API密钥。请设置环境变量OPENAI_API_KEY或在配置文件中设置。[/red]")
             return
+        
+        if show_chunks:
+            console.print("[blue]📊 分块处理功能已启用，将显示详细的分块信息[/blue]")
+        
+        console.print(f"[blue]🤖 使用模型: {os.getenv('OPENAI_MODEL', 'gpt-4')}[/blue]")
+        console.print(f"[blue]📏 Token限制: {os.getenv('MAX_TOKENS', '8192')}[/blue]")
+        console.print("[blue]💡 如果文档超过token限制，将自动分块处理[/blue]")
         
         if mode == 'enhanced':
             console.print("[blue]🌟 使用增强模式（跟踪更改+批注）进行校对...[/blue]")
@@ -123,6 +132,8 @@ def proofread(input_file: str, output_file: str, mode: str):
                 console.print("   - 可以在Word中接受或拒绝这些修改")
             else:
                 console.print("[blue]📝 使用Word打开文档，在审阅窗格中查看批注建议[/blue]")
+                
+            console.print("[green]🎉 校对完成！长文档分块处理功能已自动处理Token限制问题[/green]")
         else:
             console.print("[red]❌ 校对失败[/red]")
     
@@ -283,7 +294,7 @@ def revise(input_file: str, output_file: str):
             console.print("[red]❌ 错误：未找到API密钥。请设置环境变量OPENAI_API_KEY或在配置文件中设置。[/red]")
             return
         
-        from proofreader.proofreader_revisions import ProofReaderWithRevisions
+        from src.proofreader_revisions import ProofReaderWithRevisions
         
         proofreader = ProofReaderWithRevisions(api_key)
         
@@ -303,6 +314,9 @@ def revise(input_file: str, output_file: str):
     
     except Exception as e:
         console.print(f"[red]错误：{e}[/red]")
+
+
+# 文档转换能力检查已在CLI中实现
 
 
 if __name__ == '__main__':

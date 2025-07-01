@@ -13,12 +13,9 @@ import zipfile
 import tempfile
 import os
 import xml.etree.ElementTree as ET
-try:
-    from .word_track_changes import WordTrackChangesManager, enable_track_changes_in_docx
-    from .word_comments_advanced import WordCommentsManager
-except ImportError:
-    from word_track_changes import WordTrackChangesManager, enable_track_changes_in_docx
-    from word_comments_advanced import WordCommentsManager
+
+from word_track_changes import WordTrackChangesManager, enable_track_changes_in_docx
+from word_comments_advanced import WordCommentsManager
 
 
 class WordTrackChangesWithCommentsManager:
@@ -192,18 +189,11 @@ def enable_track_changes_setting(temp_dir):
 def add_comments_xml_files(temp_dir, comments_data):
     """添加批注相关的XML文件"""
     try:
-        try:
-            from .word_comments_xml import (
-                create_comments_xml, 
-                create_document_rels, 
-                update_content_types
-            )
-        except ImportError:
-            from .word_comments_xml import (
-                create_comments_xml, 
-                create_document_rels, 
-                update_content_types
-            )
+        from word_comments_xml import (
+            create_comments_xml, 
+            create_document_rels, 
+            update_content_types
+        )
         
         word_dir = os.path.join(temp_dir, 'word')
         os.makedirs(word_dir, exist_ok=True)
@@ -521,7 +511,7 @@ class ProofReaderWithCommentsAndTrackChanges:
         """创建comments.xml文件"""
         try:
             try:
-                from .word_comments_xml import create_comments_xml
+                from word_comments_xml import create_comments_xml
             except ImportError:
                 from word_comments_xml import create_comments_xml
             
@@ -543,7 +533,7 @@ class ProofReaderWithCommentsAndTrackChanges:
         """更新文档关系"""
         try:
             try:
-                from .word_comments_xml import create_document_rels
+                from word_comments_xml import create_document_rels
             except ImportError:
                 from word_comments_xml import create_document_rels
             create_document_rels(temp_dir)
@@ -554,7 +544,7 @@ class ProofReaderWithCommentsAndTrackChanges:
         """更新内容类型"""
         try:
             try:
-                from .word_comments_xml import update_content_types
+                from word_comments_xml import update_content_types
             except ImportError:
                 from word_comments_xml import update_content_types
             update_content_types(temp_dir)

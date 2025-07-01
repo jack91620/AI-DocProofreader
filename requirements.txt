@@ -6,4 +6,6 @@ pypinyin==0.50.0
 requests==2.31.0
 pydantic==2.5.3
 rich==13.7.0
-click==8.1.7 
+click==8.1.7
+# 文档转换支持 (可选，Windows用户安装)
+pywin32; sys_platform == "win32" 

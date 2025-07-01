@@ -11,12 +11,12 @@ from rich.console import Console
 from docx import Document
 from datetime import datetime
 
-from .config import Config
-from .document import DocumentProcessor
-from .ai_checker import AIChecker, ProofreadingResult
-from .word_track_changes import WordTrackChangesManager, enable_track_changes_in_docx
-from .word_comments_advanced import WordCommentsManager
-from .word_comments_xml import create_comments_xml, create_document_rels, update_content_types, add_comments_to_docx
+from config import Config
+from document import DocumentProcessor
+from ai_checker import AIChecker, ProofreadingResult
+from word_track_changes import WordTrackChangesManager, enable_track_changes_in_docx
+from word_comments_advanced import WordCommentsManager
+from word_comments_xml import create_comments_xml, create_document_rels, update_content_types, add_comments_to_docx
 import zipfile
 import tempfile
 
@@ -223,8 +223,8 @@ class ProofReaderWithTrackChangesAndComments:
         """创建最终的同步文档（包含跟踪更改和批注）"""
         try:
             # 导入所需模块
-            from .word_track_changes import enable_track_changes_in_docx
-            from .word_track_changes_with_comments import ProofReaderWithCommentsAndTrackChanges
+            from word_track_changes import enable_track_changes_in_docx
+            from word_track_changes_with_comments import ProofReaderWithCommentsAndTrackChanges
             
             # 使用word_track_changes_with_comments模块来处理批注和跟踪更改
             # 这个模块能够正确处理批注引用标记
@@ -261,7 +261,7 @@ class ProofReaderWithTrackChangesAndComments:
             # 回退方案：仅使用跟踪更改
             try:
                 self.console.print("[yellow]⚠️ 尝试回退方案：仅包含跟踪更改[/yellow]")
-                from .word_track_changes import enable_track_changes_in_docx
+                from word_track_changes import enable_track_changes_in_docx
                 
                 success = enable_track_changes_in_docx(temp_file, output_file, track_changes_data)
                 if success:

@@ -3,6 +3,8 @@
 """
 
 import re
+import os
+import tempfile
 from typing import List, Dict, Tuple
 from docx import Document
 from docx.shared import RGBColor
@@ -12,28 +14,53 @@ from docx.oxml.ns import nsdecls
 from docx.oxml import parse_xml
 import uuid
 from datetime import datetime
-from .word_comments import WordCommentsHandler
+from word_comments import WordCommentsHandler
+from document_converter import DocumentConverter
 
 
 class DocumentProcessor:
-    """文档处理器"""
+    """文档处理器 - 支持.doc和.docx格式"""
     
     def __init__(self):
         self.document = None
         self.paragraphs = []
         self.text_content = ""
         self.comments_handler = None
+        self.converter = DocumentConverter()
+        self.temp_docx_path = None
+        self.was_converted = False
     
     def load_document(self, file_path: str) -> bool:
-        """加载docx文档"""
+        """加载文档，自动处理.doc和.docx格式"""
         try:
-            self.document = Document(file_path)
+            # 检测文档格式并确保为.docx
+            docx_path, was_converted = self.converter.ensure_docx_format(file_path)
+            
+            # 保存转换信息用于清理
+            self.temp_docx_path = docx_path if was_converted else None
+            self.was_converted = was_converted
+            
+            if was_converted:
+                print(f"📄 已将.doc文件转换为.docx格式进行处理")
+            
+            # 加载.docx文档
+            self.document = Document(docx_path)
             self.comments_handler = WordCommentsHandler(self.document)
             self._extract_text()
+            
             return True
+            
         except Exception as e:
             print(f"加载文档失败: {e}")
+            self._cleanup_temp_files()
             return False
+    
+    def _cleanup_temp_files(self):
+        """清理临时文件"""
+        if self.temp_docx_path and self.was_converted:
+            self.converter.cleanup_temp_files(self.temp_docx_path, self.was_converted)
+            self.temp_docx_path = None
+            self.was_converted = False
     
     def _extract_text(self):
         """提取文档中的文本内容"""
@@ -158,9 +185,17 @@ class DocumentProcessor:
         try:
             if self.document:
                 self.document.save(output_path)
+                
+                # 如果原文件是.doc格式，保存后清理临时文件
+                if self.was_converted:
+                    print(f"✅ 已将处理结果保存为.docx格式: {output_path}")
+                
                 return True
         except Exception as e:
             print(f"保存文档失败: {e}")
+        finally:
+            # 清理临时文件
+            self._cleanup_temp_files()
         
         return False
     
