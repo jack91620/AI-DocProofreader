@@ -9,6 +9,11 @@ import os
 import sys
 from rich.console import Console
 import configparser
+from pathlib import Path
+
+# 添加src目录到Python路径
+src_path = Path(__file__).parent / "src" 
+sys.path.insert(0, str(src_path))
 
 from proofreader import ProofReader, Config
 from proofreader.proofreader_revisions import ProofReaderWithRevisions

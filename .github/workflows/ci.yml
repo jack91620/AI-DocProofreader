@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: [3.8, 3.9, '3.10', 3.11]
+        python-version: [3.9, 3.10, 3.11]
 
     steps:
     - uses: actions/checkout@v4
@@ -21,97 +21,106 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
     
-    - name: Cache pip dependencies
-      uses: actions/cache@v3
+    - name: Set up Conda
+      uses: conda-incubator/setup-miniconda@v3
       with:
-        path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
-        restore-keys: |
-          ${{ runner.os }}-pip-
+        environment-file: environment.yml
+        activate-environment: ai-proofreader
+        python-version: ${{ matrix.python-version }}
+        auto-activate-base: false
     
     - name: Install dependencies
+      shell: bash -l {0}
       run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install pytest pytest-cov pytest-mock coverage
+        conda activate ai-proofreader
+        pip install -r requirements-dev.txt
+        pip install pytest-cov pytest-html pytest-xdist flake8 black isort mypy
     
-    - name: Lint with flake8
+    - name: Code Quality Check
+      shell: bash -l {0}
       run: |
-        pip install flake8
-        # 停止构建如果有Python语法错误或未定义名称
-        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-        # 将所有错误视为警告，GitHub编辑器宽度为127个字符
-        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+        conda activate ai-proofreader
+        # 代码格式检查
+        black --check src/ tests/ main.py
+        # 导入排序检查
+        isort --check-only src/ tests/ main.py
+        # 代码规范检查
+        flake8 src/ tests/ main.py --max-line-length=88 --extend-ignore=E203,W503
+        # 类型检查
+        mypy src/ --ignore-missing-imports
     
-    - name: Test with pytest
+    - name: Security Check
+      shell: bash -l {0}
       run: |
-        pytest tests/ --cov=. --cov-report=xml --cov-report=html --cov-report=term-missing
+        conda activate ai-proofreader
+        pip install safety bandit
+        # 依赖安全检查
+        safety check
+        # 代码安全检查
+        bandit -r src/ -f json -o reports/security_report.json || true
     
-    - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v3
+    - name: Unit Tests
+      shell: bash -l {0}
+      run: |
+        conda activate ai-proofreader
+        mkdir -p reports
+        pytest tests/unit/ -v --cov=src --cov-report=html:reports/coverage_html --cov-report=xml:reports/coverage.xml --html=reports/unit_test_report.html --self-contained-html
+      env:
+        PYTHONPATH: ${{ github.workspace }}/src
+    
+    - name: Integration Tests
+      shell: bash -l {0}
+      run: |
+        conda activate ai-proofreader
+        pytest tests/integration/ -v --html=reports/integration_test_report.html --self-contained-html
+      env:
+        PYTHONPATH: ${{ github.workspace }}/src
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY_TEST }}
+        OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL_TEST }}
+    
+    - name: Performance Tests
+      shell: bash -l {0}
+      run: |
+        conda activate ai-proofreader
+        pytest tests/performance/ -v --html=reports/performance_test_report.html --self-contained-html
+      env:
+        PYTHONPATH: ${{ github.workspace }}/src
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY_TEST }}
+    
+    - name: Generate Test Summary Report
+      shell: bash -l {0}
+      run: |
+        conda activate ai-proofreader
+        python scripts/generate_test_summary.py
+      if: always()
+    
+    - name: Upload Test Reports
+      uses: actions/upload-artifact@v4
+      if: always()
       with:
-        file: ./coverage.xml
+        name: test-reports-python-${{ matrix.python-version }}
+        path: reports/
+        retention-days: 30
+    
+    - name: Upload Coverage to Codecov
+      uses: codecov/codecov-action@v3
+      if: matrix.python-version == '3.9'
+      with:
+        file: reports/coverage.xml
         flags: unittests
         name: codecov-umbrella
-        fail_ci_if_error: false
-
-  security:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
     
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.10'
-    
-    - name: Install dependencies
+    - name: Quality Gate Check
+      shell: bash -l {0}
       run: |
-        python -m pip install --upgrade pip
-        pip install bandit safety
-    
-    - name: Security check with bandit
-      run: |
-        bandit -r . -f json -o bandit-report.json || true
-    
-    - name: Safety check
-      run: |
-        safety check --json --output safety-report.json || true
-
-  quality:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.10'
-    
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install black isort mypy pylint
-        pip install -r requirements.txt
-    
-    - name: Code formatting check with black
-      run: |
-        black --check --diff .
-    
-    - name: Import sorting check with isort
-      run: |
-        isort --check-only --diff .
-    
-    - name: Type checking with mypy
-      run: |
-        mypy . --ignore-missing-imports || true
-    
-    - name: Linting with pylint  
-      run: |
-        pylint **/*.py --output-format=json:pylint-report.json,text || true
+        conda activate ai-proofreader
+        python scripts/quality_gate_check.py
+      env:
+        MIN_COVERAGE: 90
+        MIN_TEST_PASS_RATE: 95
 
   build:
-    needs: [test, security, quality]
+    needs: test
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/master'
     
@@ -121,23 +130,79 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: '3.10'
+        python-version: 3.9
     
-    - name: Install build dependencies
+    - name: Set up Conda
+      uses: conda-incubator/setup-miniconda@v3
+      with:
+        environment-file: environment.yml
+        activate-environment: ai-proofreader
+        auto-activate-base: false
+    
+    - name: Build Package
+      shell: bash -l {0}
       run: |
-        python -m pip install --upgrade pip
+        conda activate ai-proofreader
         pip install build twine
-    
-    - name: Build package
-      run: |
         python -m build
     
-    - name: Check package
-      run: |
-        twine check dist/*
-    
-    - name: Upload artifacts
-      uses: actions/upload-artifact@v3
+    - name: Upload Build Artifacts
+      uses: actions/upload-artifact@v4
       with:
-        name: dist
-        path: dist/ 
+        name: build-artifacts
+        path: dist/
+        retention-days: 90
+
+  release:
+    needs: [test, build]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/master' && startsWith(github.ref, 'refs/tags/v')
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Download Build Artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: build-artifacts
+        path: dist/
+    
+    - name: Create Release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref_name }}
+        release_name: AI校对助手 ${{ github.ref_name }}
+        body_path: CHANGELOG.md
+        draft: false
+        prerelease: false
+    
+    - name: Upload Release Assets
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: dist/
+        asset_name: ai-proofreader-${{ github.ref_name }}.tar.gz
+        asset_content_type: application/gzip
+
+  notification:
+    needs: [test, build]
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+    - name: Notify on Success
+      if: ${{ needs.test.result == 'success' && needs.build.result == 'success' }}
+      run: |
+        echo "✅ CI/CD Pipeline 执行成功"
+        echo "所有测试通过，质量门禁达标"
+    
+    - name: Notify on Failure
+      if: ${{ needs.test.result == 'failure' || needs.build.result == 'failure' }}
+      run: |
+        echo "❌ CI/CD Pipeline 执行失败"
+        echo "请检查测试报告和日志"
+        exit 1 
