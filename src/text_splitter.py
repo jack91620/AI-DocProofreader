@@ -7,8 +7,11 @@
 
 import re
 import math
+import logging
 from typing import List, Dict, Tuple, Optional
 from dataclasses import dataclass
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -27,8 +30,8 @@ class TokenCounter:
     # 系统提示词的大致token数（更保守的估算）
     SYSTEM_PROMPT_TOKENS = 300
     
-    # 用户提示模板的大致token数（包含大量JSON格式说明等）
-    USER_PROMPT_TEMPLATE_TOKENS = 3500
+    # 用户提示模板的大致token数（实际模板约500-800 tokens）
+    USER_PROMPT_TEMPLATE_TOKENS = 800
     
     # JSON响应格式的预期token数
     RESPONSE_FORMAT_TOKENS = 800
@@ -53,11 +56,11 @@ class TokenCounter:
         # 计算其他字符（数字、标点、空格等）
         other_chars = len(text) - chinese_chars - sum(len(word) for word in re.findall(r'[a-zA-Z]+', text))
         
-        # 非常保守的估算token数量
+        # 更准确的token估算
         estimated_tokens = (
-            chinese_chars +          # 中文1个字符约1个token（非常保守）
-            english_words +          # 英文单词约1个单词1个token
-            other_chars // 2         # 其他字符约2个字符1个token（更保守）
+            int(chinese_chars * 0.6) +  # 中文1个字符约0.3-0.7个token
+            english_words +              # 英文单词约1个单词1个token
+            other_chars // 3             # 其他字符约3个字符1个token
         )
         
         # 至少保证不少于字符数/2（极保守的下限）
@@ -106,13 +109,13 @@ class SmartTextSplitter:
             TokenCounter.API_OVERHEAD_TOKENS
         )
         
-        # 为内容留出的实际token数，再减去更大的安全边距
-        self.content_max_tokens = max(500, max_tokens - overhead_tokens - 1000)  # 增加安全边距到1000
-        
-        print(f"[DEBUG] 模型总限制: {max_tokens} tokens")
-        print(f"[DEBUG] API开销估算: {overhead_tokens} tokens") 
-        print(f"[DEBUG] 安全边距: 1000 tokens")
-        print(f"[DEBUG] 内容可用token: {self.content_max_tokens} tokens")
+        # 为内容留出的实际token数，减去安全边距
+        self.content_max_tokens = max(500, max_tokens - overhead_tokens - 500)
+
+        logger.debug(f"模型总限制: {max_tokens} tokens")
+        logger.debug(f"API开销估算: {overhead_tokens} tokens")
+        logger.debug(f"安全边距: 500 tokens")
+        logger.debug(f"内容可用token: {self.content_max_tokens} tokens")
     
     def split_by_paragraphs(self, paragraphs: List[str]) -> List[TextChunk]:
         """

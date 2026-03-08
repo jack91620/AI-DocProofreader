@@ -81,7 +81,7 @@ class DocumentConverter:
             # 简单的网络连接测试
             response = requests.get('https://httpbin.org/status/200', timeout=5)
             return response.status_code == 200
-        except:
+        except Exception:
             return False
     
     def can_convert_doc(self) -> Tuple[bool, str]:

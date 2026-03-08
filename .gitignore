@@ -63,9 +63,7 @@ output/
 # Logs
 *.log
 
-# Test files and temporary files
-test_*.py
-*_test.py
+# Temporary/debug scripts (not test files)
 *_debug.py
 *_fix.py
 analyze_*.py
@@ -74,9 +72,7 @@ final_*.py
 verify_*.py
 diagnose_*.py
 investigate_*.py
-check_*.py
 debug_*.py
-create_*.py
 execute_*.py
 
 # Temporary documentation
