@@ -10,6 +10,14 @@ from config import Config
 from text_splitter import SmartTextSplitter, TextChunk
 from rich.console import Console
 from rich.progress import Progress, TaskID
+from logging_config import get_logger
+
+try:
+    import anthropic
+except ImportError:
+    anthropic = None
+
+logger = get_logger("ai_checker")
 
 
 class ProofreadingResult:
@@ -41,36 +49,102 @@ class ProofreadingResult:
 
 
 class AIChecker:
-    """AI校对检查器"""
-    
+    """AI校对检查器 - 支持OpenAI和Claude双提供商"""
+
     def __init__(self, config_or_api_key):
         if isinstance(config_or_api_key, str):
             # 如果传入的是API密钥字符串，创建临时配置
-            import os
-            os.environ['OPENAI_API_KEY'] = config_or_api_key
             self.config = Config()
+            self.config.ai.api_key = config_or_api_key
         else:
             # 如果传入的是Config对象
             self.config = config_or_api_key
+
+        self.provider = self.config.ai.provider
+        self.client = None
+        self.claude_client = None
+
+        if self.provider == "claude":
+            self._init_claude_client()
+        else:
+            self._init_openai_client()
+
+        # 初始化文本分割器
+        self.text_splitter = SmartTextSplitter(
+            max_tokens=self.config.ai.max_tokens,
+            overlap_tokens=self.config.ai.chunk_overlap_tokens
+        )
+        self.console = Console()
+
+    def _init_openai_client(self):
+        """初始化OpenAI客户端"""
         try:
             self.client = openai.OpenAI(
                 api_key=self.config.ai.api_key,
                 base_url=self.config.ai.base_url
             )
         except Exception as e:
-            # 兼容不同版本的openai库
             openai.api_key = self.config.ai.api_key
             if hasattr(openai, 'api_base'):
                 openai.api_base = self.config.ai.base_url
             self.client = None
-        
-        # 初始化文本分割器 - 使用改进的token计算
-        # 使用模型的实际token限制，分割器内部会计算API开销
-        self.text_splitter = SmartTextSplitter(
-            max_tokens=self.config.ai.max_tokens,  # 使用模型的真实限制
-            overlap_tokens=self.config.ai.chunk_overlap_tokens
+
+    def _init_claude_client(self):
+        """初始化Claude客户端"""
+        if anthropic is None:
+            raise ImportError("使用Claude需要安装anthropic库: pip install anthropic")
+        self.claude_client = anthropic.Anthropic(api_key=self.config.ai.api_key)
+
+    def _call_llm(self, system_prompt: str, user_prompt: str,
+                  max_tokens: int = 2000, temperature: float = None) -> str:
+        """统一的LLM调用接口 - 支持OpenAI和Claude"""
+        if temperature is None:
+            temperature = self.config.ai.temperature
+
+        if self.provider == "claude":
+            return self._call_claude(system_prompt, user_prompt, max_tokens, temperature)
+        else:
+            return self._call_openai(system_prompt, user_prompt, max_tokens, temperature)
+
+    def _call_claude(self, system_prompt: str, user_prompt: str,
+                     max_tokens: int, temperature: float) -> str:
+        """调用Claude API"""
+        response = self.claude_client.messages.create(
+            model=self.config.ai.model,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            system=system_prompt,
+            messages=[
+                {"role": "user", "content": user_prompt}
+            ]
         )
-        self.console = Console()
+        return response.content[0].text
+
+    def _call_openai(self, system_prompt: str, user_prompt: str,
+                     max_tokens: int, temperature: float) -> str:
+        """调用OpenAI API"""
+        if self.client:
+            response = self.client.chat.completions.create(
+                model=self.config.ai.model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                max_tokens=max_tokens,
+                temperature=temperature
+            )
+            return response.choices[0].message.content
+        else:
+            response = openai.ChatCompletion.create(
+                model=self.config.ai.model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                max_tokens=max_tokens,
+                temperature=temperature
+            )
+            return response.choices[0].message.content
     
     def check_text(self, text: str) -> ProofreadingResult:
         """检查文本 - 支持自动分块处理长文档"""
@@ -123,9 +197,9 @@ class AIChecker:
                             )
                         else:
                             # 如果issue不是字典，跳过或记录错误
-                            print(f"⚠️ 术语检查返回了无效格式: {type(issue)}")
+                            logger.warning(f"术语检查返回了无效格式: {type(issue)}")
             except Exception as e:
-                print(f"⚠️ 术语检查处理失败: {e}")
+                logger.warning(f"术语检查处理失败: {e}")
         
         # 2. AI深度检查
         ai_result = self._ai_proofread(text)
@@ -237,65 +311,37 @@ class AIChecker:
         """检查术语一致性 - 带重试机制"""
         max_retries = 3
         base_delay = 1
-        
-        for attempt in range(max_retries):
-            try:
-                # 术语检查的回复通常较短，设置较小的max_tokens
-                max_completion_tokens = 800  # 减少token数，降低服务器负担
-                
-                # 简化提示词，减少token消耗
-                prompt = f"""
-检查以下文本的术语一致性问题：
+
+        prompt = f"""检查以下文本的术语一致性问题：
 
 文本：{text[:1000]}...
 
-返回JSON格式：{{"problems": [{{"type": "terminology", "original": "原文", "suggested": "建议", "reason": "原因"}}]}}
-"""
-                
-                if self.client:
-                    response = self.client.chat.completions.create(
-                        model=self.config.ai.model,
-                        messages=[
-                            {"role": "system", "content": "你是术语检查专家，检查技术文档术语一致性。"},
-                            {"role": "user", "content": prompt}
-                        ],
-                        max_tokens=max_completion_tokens,
-                        temperature=0.1,
-                        timeout=30  # 添加超时设置
-                    )
-                    content = response.choices[0].message.content
-                else:
-                    response = openai.ChatCompletion.create(
-                        model=self.config.ai.model,
-                        messages=[
-                            {"role": "system", "content": "你是术语检查专家，检查技术文档术语一致性。"},
-                            {"role": "user", "content": prompt}
-                        ],
-                        max_tokens=max_completion_tokens,
-                        temperature=0.1,
-                        request_timeout=30
-                    )
-                    content = response.choices[0].message.content
-                
-                # 解析AI返回的结果
+返回JSON格式：{{"problems": [{{"type": "terminology", "original": "原文", "suggested": "建议", "reason": "原因"}}]}}"""
+
+        for attempt in range(max_retries):
+            try:
+                content = self._call_llm(
+                    system_prompt="你是术语检查专家，检查技术文档术语一致性。",
+                    user_prompt=prompt,
+                    max_tokens=800,
+                    temperature=0.1
+                )
+
                 result = self._parse_json_response(content)
-                
-                # 确保返回正确格式的列表
+
                 if isinstance(result, dict) and "problems" in result:
                     problems = result["problems"]
                     if isinstance(problems, list):
                         return problems
-                
-                # 如果解析失败，返回空列表
+
                 return []
-                
+
             except Exception as e:
                 error_msg = str(e).lower()
-                
-                # 检查是否是服务器错误或超时
-                if any(keyword in error_msg for keyword in ['server error', '500', 'timeout', 'connection']):
+
+                if any(keyword in error_msg for keyword in ['server error', '500', 'timeout', 'connection', 'overloaded']):
                     if attempt < max_retries - 1:
-                        delay = base_delay * (2 ** attempt)  # 指数退避
+                        delay = base_delay * (2 ** attempt)
                         self.console.print(f"[yellow]⚠️ 术语检查遇到服务器错误，{delay}秒后重试 (尝试 {attempt + 1}/{max_retries})[/yellow]")
                         import time
                         time.sleep(delay)
@@ -304,70 +350,33 @@ class AIChecker:
                         self.console.print(f"[yellow]⚠️ 术语检查最终失败，跳过此检查: {e}[/yellow]")
                         return []
                 else:
-                    # 其他错误直接失败
                     self.console.print(f"[yellow]⚠️ 术语检查失败: {e}[/yellow]")
                     return []
-        
-        # 如果所有重试都失败，返回空列表
+
         return []
     
     def _ai_proofread(self, text: str) -> Dict[str, Any]:
         """AI深度校对"""
         try:
             prompt = self._build_proofread_prompt(text)
-            
-            # 计算合理的max_tokens：避免输入+输出超过模型总限制
-            # 估算输入的token数（包括系统提示和用户提示）
+
             input_tokens = self.text_splitter.token_counter.estimate_full_request_tokens(text)
-            # 为输出保留合理的token数，通常校对结果不会比原文长太多
             max_completion_tokens = min(2000, max(500, self.config.ai.max_tokens - input_tokens - 500))
-            
+
             if max_completion_tokens < 500:
-                # 如果计算出的完成tokens太少，说明输入太长，应该进行分块
-                print(f"⚠️ 输入过长 ({input_tokens} tokens)，建议使用分块处理")
+                logger.warning(f"输入过长 ({input_tokens} tokens)，建议使用分块处理")
                 max_completion_tokens = 500
-            
-            if self.client:
-                # 使用新版openai客户端
-                response = self.client.chat.completions.create(
-                    model=self.config.ai.model,
-                    messages=[
-                        {
-                            "role": "system",
-                            "content": "你是一个专业的中文计算机教材校对专家。请仔细检查文本中的语法、用词、逻辑和专业术语问题。"
-                        },
-                        {
-                            "role": "user",
-                            "content": prompt
-                        }
-                    ],
-                    max_tokens=max_completion_tokens,  # 使用计算出的合理完成长度
-                    temperature=self.config.ai.temperature
-                )
-                result_text = response.choices[0].message.content
-            else:
-                # 使用旧版openai接口
-                response = openai.ChatCompletion.create(
-                    model=self.config.ai.model,
-                    messages=[
-                        {
-                            "role": "system",
-                            "content": "你是一个专业的中文计算机教材校对专家。请仔细检查文本中的语法、用词、逻辑和专业术语问题。"
-                        },
-                        {
-                            "role": "user",
-                            "content": prompt
-                        }
-                    ],
-                    max_tokens=max_completion_tokens,  # 使用计算出的合理完成长度
-                    temperature=self.config.ai.temperature
-                )
-                result_text = response.choices[0].message.content
-            
+
+            result_text = self._call_llm(
+                system_prompt="你是一个专业的中文计算机教材校对专家。请仔细检查文本中的语法、用词、逻辑和专业术语问题。",
+                user_prompt=prompt,
+                max_tokens=max_completion_tokens
+            )
+
             return self._parse_json_response(result_text)
-            
+
         except Exception as e:
-            print(f"AI校对失败: {e}")
+            logger.error(f"AI校对失败: {e}")
             return {"issues": [], "suggestions": []}
     
     def _build_proofread_prompt(self, text: str) -> str:
@@ -450,7 +459,6 @@ class AIChecker:
     
     def _clean_ai_response(self, response_text: str) -> str:
         """清理AI响应文本"""
-        import re
         
         # 移除markdown代码块标记
         response_text = re.sub(r'```json\s*', '', response_text)
@@ -477,7 +485,6 @@ class AIChecker:
     
     def _fix_nested_json_issues(self, json_text: str) -> str:
         """修复嵌套JSON的问题"""
-        import re
         
         # 修复嵌套对象中缺失的逗号
         json_text = re.sub(r'}\s*{', '},{', json_text)
@@ -493,7 +500,6 @@ class AIChecker:
     
     def _fix_quote_issues(self, json_text: str) -> str:
         """修复引号问题"""
-        import re
         
         # 修复单引号为双引号
         json_text = json_text.replace("'", '"')
@@ -508,7 +514,6 @@ class AIChecker:
     
     def _fix_common_json_issues(self, json_text: str) -> str:
         """修复常见的JSON格式问题"""
-        import re
         
         # 移除多余的逗号（在}或]前的逗号）
         json_text = re.sub(r',(\s*[}\]])', r'\1', json_text)
@@ -529,7 +534,6 @@ class AIChecker:
     
     def _fix_aggressive_json_issues(self, json_text: str) -> str:
         """激进的JSON修复方法"""
-        import re
         
         # 移除所有换行符并重新格式化
         json_text = re.sub(r'\s*\n\s*', ' ', json_text)
@@ -556,9 +560,6 @@ class AIChecker:
         result = {"issues": [], "suggestions": []}
         
         try:
-            # 使用正则表达式提取结构化信息
-            import re
-            
             # 查找可能的问题描述
             issue_patterns = [
                 r'(?:问题|错误|error|issue)[:：]\s*([^\n]+)',
@@ -661,8 +662,7 @@ class AIChecker:
     def check_grammar(self, text: str) -> List[Dict[str, str]]:
         """专门检查语法问题"""
         try:
-            prompt = f"""
-请检查以下中文文本的语法问题，包括：
+            prompt = f"""请检查以下中文文本的语法问题，包括：
 1. 句子结构问题
 2. 主谓宾搭配不当
 3. 语序错误
@@ -680,37 +680,20 @@ class AIChecker:
     ]
 }}
 
-文本：{text}
-"""
-            
-            if self.client:
-                response = self.client.chat.completions.create(
-                    model=self.config.ai.model,
-                    messages=[
-                        {"role": "system", "content": "你是一个中文语法专家。"},
-                        {"role": "user", "content": prompt}
-                    ],
-                    max_tokens=2000,
-                    temperature=0.1
-                )
-                result_text = response.choices[0].message.content
-            else:
-                response = openai.ChatCompletion.create(
-                    model=self.config.ai.model,
-                    messages=[
-                        {"role": "system", "content": "你是一个中文语法专家。"},
-                        {"role": "user", "content": prompt}
-                    ],
-                    max_tokens=2000,
-                    temperature=0.1
-                )
-                result_text = response.choices[0].message.content
-            
+文本：{text}"""
+
+            result_text = self._call_llm(
+                system_prompt="你是一个中文语法专家。",
+                user_prompt=prompt,
+                max_tokens=2000,
+                temperature=0.1
+            )
+
             result = self._parse_json_response(result_text)
             return result.get("grammar_issues", [])
-            
+
         except Exception as e:
-            print(f"语法检查失败: {e}")
+            logger.error(f"语法检查失败: {e}")
             return []
     
     def check_document(self, text_content: List[str]):
@@ -746,6 +729,6 @@ class AIChecker:
             return result
             
         except Exception as e:
-            print(f"文档检查失败: {e}")
+            logger.error(f"文档检查失败: {e}")
             # 返回空结果
             return ProofreadingResult() 
