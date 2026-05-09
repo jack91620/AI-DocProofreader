@@ -95,6 +95,7 @@ regional_variants:
 
 competing_translations:
   # 推荐译名（第一个）+ 可接受变体；全书应统一
+  # 推荐译名以全国计算机科学技术名词审定委员会《计算机科学技术名词》(2018) 为准
   robustness: [鲁棒性, 健壮性, 稳健性]
   scalability: [可扩展性, 可伸缩性, 可拓展性]
   performance: [性能, 效能]
@@ -115,6 +116,82 @@ competing_translations:
   binding: [绑定, 系结]
   callback: [回调, 回调函数, 调回]
   hash: [哈希, 散列]
+  # === 扩展词条 (C1 引入) ===
+  # 数据结构 / 算法
+  array: [数组, 阵列]
+  list: [列表, 串列]
+  tree: [树, 树形结构]
+  graph: [图, 图形]
+  heap: [堆, 堆积]
+  trie: [字典树, 前缀树, 单词查找树]
+  recursion: [递归, 递回]
+  iteration: [迭代, 循环]
+  complexity: [复杂度, 复杂性]
+  # 操作系统 / 并发
+  process: [进程, 行程]
+  scheduler: [调度器, 排程器]
+  semaphore: [信号量, 号志]
+  mutex: [互斥锁, 互斥量]
+  deadlock: [死锁, 锁死]
+  starvation: [饥饿, 饿死]
+  paging: [分页, 页面调度]
+  swap: [交换, 置换]
+  # 网络
+  socket: [套接字, 通信端点]
+  router: [路由器, 路由设备]
+  gateway: [网关, 闸道]
+  bandwidth: [带宽, 频宽]
+  latency: [延迟, 延时]
+  throughput: [吞吐量, 通量]
+  packet: [数据包, 封包]
+  payload: [载荷, 有效负载, 载体]
+  # 软件工程
+  refactor: [重构, 重整]
+  deployment: [部署, 布署]
+  rollback: [回滚, 复原, 还原]
+  regression: [回归, 衰退]
+  dependency: [依赖, 依赖项, 相依性]
+  monorepo: [单仓, 单一仓库]
+  artifact: [构件, 产物, 工件]
+  # 数据库
+  index: [索引, 引索]
+  transaction: [事务, 交易]
+  rollback_db: [回滚, 撤销]
+  isolation: [隔离, 隔离级别]
+  consistency: [一致性, 一致]
+  durability: [持久性, 耐久性]
+  replication: [复制, 复写]
+  sharding: [分片, 分区]
+  # AI / ML
+  embedding: [嵌入, 嵌入向量, 向量化]
+  inference: [推理, 推断, 推论]
+  fine_tuning: [微调, 精调]
+  gradient: [梯度, 梯度向量]
+  loss: [损失, 损失函数]
+  overfitting: [过拟合, 过度拟合]
+  underfitting: [欠拟合, 拟合不足]
+  attention: [注意力, 注意力机制]
+  token: [词元, 标记, 令牌]
+  prompt: [提示, 提示词, 提示语]
+  hallucination: [幻觉, 错误生成]
+  # 安全
+  authentication: [身份认证, 身份验证, 鉴权]
+  authorization: [授权, 鉴权]
+  encryption: [加密, 加密化]
+  decryption: [解密, 解密化]
+  vulnerability: [漏洞, 缺陷, 安全漏洞]
+  # 前端 / Web
+  rendering: [渲染, 绘制]
+  responsive: [响应式, 自适应]
+  hydration: [水合, 注入]
+  middleware: [中间件, 中介软件]
+  websocket: [Web套接字, 网页套接字]
+  # 编程范式
+  closure: [闭包, 闭合函数]
+  decorator: [装饰器, 修饰器]
+  generator: [生成器, 产生器]
+  coroutine: [协程, 协同程式]
+  async: [异步, 非同步]
 
 english_should_be_kept:
   # 这些词在中文教材中常以英文出现，规范允许
