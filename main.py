@@ -1,25 +1,24 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 """
 AI校对助手 - 主程序入口
 """
 
-import click
+import configparser
 import os
 import sys
-from rich.console import Console
-import configparser
 from pathlib import Path
+
+import click
+from rich.console import Console
 
 # 添加src目录到Python路径
 src_path = Path(__file__).parent / "src"
 sys.path.insert(0, str(src_path))
 
-from src.proofreader import ProofReader
 from src.config import Config
+from src.proofreader import ProofReader
 from src.proofreader_factory import create_proofreader
 from version import __version__
-
 
 console = Console()
 
@@ -27,41 +26,49 @@ console = Console()
 def load_config():
     """加载配置文件"""
     config = configparser.ConfigParser()
-    config_files = ['config.ini', 'settings.ini', '.env']
+    config_files = ["config.ini", "settings.ini", ".env"]
 
     for config_file in config_files:
         if os.path.exists(config_file):
-            config.read(config_file, encoding='utf-8')
+            config.read(config_file, encoding="utf-8")
             return config
 
     return None
 
 
 def get_api_key():
-    """获取API密钥 - 支持OpenAI和Claude"""
-    # Claude: 优先检查OAuth Session Token
-    api_key = os.getenv('CLAUDE_SESSION_TOKEN') or os.getenv('ANTHROPIC_API_KEY')
+    """获取API密钥 - 支持licloud、OpenAI和Claude"""
+    # licloud: 优先检查内部LLM网关Token
+    api_key = os.getenv("LICLOUD_TOKEN") or os.getenv("LLM_API_TOKEN")
+    if api_key:
+        return api_key
+
+    # Claude: OAuth Session Token
+    api_key = os.getenv("CLAUDE_SESSION_TOKEN") or os.getenv("ANTHROPIC_API_KEY")
     if api_key:
         return api_key
 
     # OpenAI
-    api_key = os.getenv('OPENAI_API_KEY') or os.getenv('API_KEY')
+    api_key = os.getenv("OPENAI_API_KEY") or os.getenv("API_KEY")
     if api_key:
         return api_key
 
     # 从配置文件获取
     config = load_config()
     if config:
+        # licloud配置
+        if config.has_section("licloud") and config.has_option("licloud", "token"):
+            return config.get("licloud", "token")
         # Claude配置
-        if config.has_section('claude') and config.has_option('claude', 'session_token'):
-            return config.get('claude', 'session_token')
-        if config.has_section('claude') and config.has_option('claude', 'api_key'):
-            return config.get('claude', 'api_key')
+        if config.has_section("claude") and config.has_option("claude", "session_token"):
+            return config.get("claude", "session_token")
+        if config.has_section("claude") and config.has_option("claude", "api_key"):
+            return config.get("claude", "api_key")
         # OpenAI配置
-        if config.has_section('ai') and config.has_option('ai', 'api_key'):
-            return config.get('ai', 'api_key')
-        if config.has_section('openai') and config.has_option('openai', 'api_key'):
-            return config.get('openai', 'api_key')
+        if config.has_section("ai") and config.has_option("ai", "api_key"):
+            return config.get("ai", "api_key")
+        if config.has_section("openai") and config.has_option("openai", "api_key"):
+            return config.get("openai", "api_key")
 
     return None
 
@@ -74,29 +81,46 @@ def cli():
 
 
 @cli.command()
-@click.option('-i', '--input', 'input_file', required=True, help='输入Word文档路径')
-@click.option('-o', '--output', 'output_file', help='输出Word文档路径')
-@click.option('-m', '--mode', default='comments', type=click.Choice(['comments', 'revisions', 'track_changes', 'enhanced']),
-              help='校对模式：comments（批注模式）、revisions（修订模式）、track_changes（跟踪更改）、enhanced（跟踪更改+批注）')
-@click.option('--show-chunks', is_flag=True, help='显示文档分块处理信息')
+@click.option("-i", "--input", "input_file", required=True, help="输入Word文档路径")
+@click.option("-o", "--output", "output_file", help="输出Word文档路径")
+@click.option(
+    "-m",
+    "--mode",
+    default="comments",
+    type=click.Choice(["comments", "revisions", "track_changes", "enhanced"]),
+    help="校对模式：comments（批注模式）、revisions（修订模式）、track_changes（跟踪更改）、enhanced（跟踪更改+批注）",
+)
+@click.option("--show-chunks", is_flag=True, help="显示文档分块处理信息")
 def proofread(input_file: str, output_file: str, mode: str, show_chunks: bool):
     """校对Word文档 - 支持长文档自动分块处理"""
     try:
         api_key = get_api_key()
         if not api_key:
-            console.print("[red]❌ 错误：未找到API密钥。请设置环境变量 OPENAI_API_KEY 或 CLAUDE_SESSION_TOKEN。[/red]")
+            console.print(
+                "[red]❌ 错误：未找到API密钥。请设置环境变量 LICLOUD_TOKEN、CLAUDE_SESSION_TOKEN 或 OPENAI_API_KEY。[/red]"
+            )
             return
 
         if show_chunks:
             console.print("[blue]📊 分块处理功能已启用，将显示详细的分块信息[/blue]")
 
-        # 检测提供商
+        # 检测提供商（优先级: licloud > claude > openai）
         provider = os.getenv("AI_PROVIDER", "").lower()
         if not provider:
-            provider = "claude" if (os.getenv("CLAUDE_SESSION_TOKEN") or os.getenv("ANTHROPIC_API_KEY")) else "openai"
+            if os.getenv("LICLOUD_TOKEN") or os.getenv("LLM_API_TOKEN"):
+                provider = "licloud"
+            elif os.getenv("CLAUDE_SESSION_TOKEN") or os.getenv("ANTHROPIC_API_KEY"):
+                provider = "claude"
+            else:
+                provider = "openai"
 
-        if provider == "claude":
-            model_name = os.getenv("CLAUDE_MODEL", os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-20250514"))
+        if provider == "licloud":
+            model_name = os.getenv("LICLOUD_MODEL", "aws-claude-sonnet-4-6")
+            console.print(f"[blue]🤖 使用licloud网关模型: {model_name}[/blue]")
+        elif provider == "claude":
+            model_name = os.getenv(
+                "CLAUDE_MODEL", os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-20250514")
+            )
             console.print(f"[blue]🤖 使用Claude模型: {model_name}[/blue]")
         else:
             model_name = os.getenv("OPENAI_MODEL", "gpt-4")
@@ -106,14 +130,22 @@ def proofread(input_file: str, output_file: str, mode: str, show_chunks: bool):
         console.print("[blue]💡 如果文档超过token限制，将自动分块处理[/blue]")
 
         mode_labels = {
-            'enhanced': ("[blue]🌟 使用增强模式（跟踪更改+批注）进行校对...[/blue]",
-                        "[dim]增强模式同时提供跟踪更改和详细批注，提供最完整的校对体验[/dim]"),
-            'track_changes': ("[blue]🔄 使用真正的Word跟踪更改功能进行校对...[/blue]",
-                            "[dim]真正的Word跟踪更改功能将直接在文档中显示修改[/dim]"),
-            'revisions': ("[blue]🔄 使用修订模式进行校对...[/blue]",
-                        "[dim]修订模式将直接在文档中显示修改，使用Word的跟踪更改功能[/dim]"),
-            'comments': ("[blue]💬 使用批注模式进行校对...[/blue]",
-                        "[dim]批注模式将在Word审阅窗格中显示建议[/dim]"),
+            "enhanced": (
+                "[blue]🌟 使用增强模式（跟踪更改+批注）进行校对...[/blue]",
+                "[dim]增强模式同时提供跟踪更改和详细批注，提供最完整的校对体验[/dim]",
+            ),
+            "track_changes": (
+                "[blue]🔄 使用真正的Word跟踪更改功能进行校对...[/blue]",
+                "[dim]真正的Word跟踪更改功能将直接在文档中显示修改[/dim]",
+            ),
+            "revisions": (
+                "[blue]🔄 使用修订模式进行校对...[/blue]",
+                "[dim]修订模式将直接在文档中显示修改，使用Word的跟踪更改功能[/dim]",
+            ),
+            "comments": (
+                "[blue]💬 使用批注模式进行校对...[/blue]",
+                "[dim]批注模式将在Word审阅窗格中显示建议[/dim]",
+            ),
         }
         label, desc = mode_labels[mode]
         console.print(label)
@@ -123,16 +155,18 @@ def proofread(input_file: str, output_file: str, mode: str, show_chunks: bool):
         success = proofreader.proofread_document(input_file, output_file)
 
         if success:
-            console.print(f"[green]✅ 校对完成！输出文件：{output_file or input_file.replace('.docx', f'_{mode}.docx')}[/green]")
+            console.print(
+                f"[green]✅ 校对完成！输出文件：{output_file or input_file.replace('.docx', f'_{mode}.docx')}[/green]"
+            )
 
-            if mode in ('enhanced',):
+            if mode in ("enhanced",):
                 console.print("[blue]📝 使用Word打开文档，体验完整的校对功能：[/blue]")
                 console.print("   - [red]删除线文本[/red] 表示需要删除的内容")
                 console.print("   - [blue underline]下划线文本[/blue underline] 表示新插入的内容")
                 console.print("   - 💬 详细的批注说明修改原因")
                 console.print("   - ✅ 可以接受或拒绝每个修改")
                 console.print("   - 🗨️ 可以回复批注进行讨论")
-            elif mode in ('revisions', 'track_changes'):
+            elif mode in ("revisions", "track_changes"):
                 console.print("[blue]📝 使用Word打开文档，可以看到跟踪更改：[/blue]")
                 console.print("   - [red]删除线文本[/red] 表示需要删除的内容")
                 console.print("   - [blue underline]下划线文本[/blue underline] 表示新插入的内容")
@@ -147,12 +181,13 @@ def proofread(input_file: str, output_file: str, mode: str, show_chunks: bool):
     except Exception as e:
         console.print(f"[red]错误：{e}[/red]")
         import traceback
+
         traceback.print_exc()
 
 
 @cli.command()
-@click.option('--input-dir', '-i', required=True, help='输入文件夹路径')
-@click.option('--output-dir', '-o', required=True, help='输出文件夹路径')
+@click.option("--input-dir", "-i", required=True, help="输入文件夹路径")
+@click.option("--output-dir", "-o", required=True, help="输出文件夹路径")
 def batch(input_dir, output_dir):
     """批量校对文件夹中的所有docx文档"""
     try:
@@ -180,8 +215,8 @@ def batch(input_dir, output_dir):
 
 
 @cli.command()
-@click.option('--text', '-t', help='要检查的文本内容')
-@click.option('--file', '-f', help='包含文本的文件路径')
+@click.option("--text", "-t", help="要检查的文本内容")
+@click.option("--file", "-f", help="包含文本的文件路径")
 def check(text, file):
     """快速检查文本片段"""
     try:
@@ -191,7 +226,7 @@ def check(text, file):
                 console.print(f"[red]错误：文件不存在 - {file}[/red]")
                 sys.exit(1)
 
-            with open(file, 'r', encoding='utf-8') as f:
+            with open(file, encoding="utf-8") as f:
                 text_content = f.read()
         elif text:
             text_content = text
@@ -252,9 +287,11 @@ def setup():
     except Exception as e:
         console.print(f"[red]❌ 配置检查失败: {e}[/red]")
         console.print("[yellow]请检查以下项目：[/yellow]")
-        console.print("1. 是否设置了 OPENAI_API_KEY 或 CLAUDE_SESSION_TOKEN 环境变量")
-        console.print("2. 网络连接是否正常")
-        console.print("3. API密钥/Session Token是否有效")
+        console.print(
+            "1. 是否设置了 LICLOUD_TOKEN、CLAUDE_SESSION_TOKEN 或 OPENAI_API_KEY 环境变量"
+        )
+        console.print("2. 网络连接是否正常（licloud需要在公司内网/VPN环境下使用）")
+        console.print("3. API密钥/Token是否有效")
         sys.exit(1)
 
 
@@ -300,17 +337,19 @@ Python的设计理念是优雅、明确、简单。Python开发者的哲学是"�
 
 
 @cli.command()
-@click.option('-i', '--input', 'input_file', required=True, help='输入Word文档路径')
-@click.option('-o', '--output', 'output_file', help='输出Word文档路径')
+@click.option("-i", "--input", "input_file", required=True, help="输入Word文档路径")
+@click.option("-o", "--output", "output_file", help="输出Word文档路径")
 def revise(input_file: str, output_file: str):
     """使用修订模式校对Word文档（快捷命令）"""
     try:
         api_key = get_api_key()
         if not api_key:
-            console.print("[red]❌ 错误：未找到API密钥。请设置环境变量OPENAI_API_KEY或在配置文件中设置。[/red]")
+            console.print(
+                "[red]❌ 错误：未找到API密钥。请设置环境变量OPENAI_API_KEY或在配置文件中设置。[/red]"
+            )
             return
 
-        proofreader = create_proofreader(api_key, 'revisions')
+        proofreader = create_proofreader(api_key, "revisions")
 
         console.print("[blue]🔄 使用修订模式进行校对...[/blue]")
         console.print("[dim]修订模式将直接在文档中显示修改，使用Word的跟踪更改功能[/dim]")
@@ -318,7 +357,9 @@ def revise(input_file: str, output_file: str):
         success = proofreader.proofread_document(input_file, output_file)
 
         if success:
-            console.print(f"[green]✅ 修订校对完成！输出文件：{output_file or input_file.replace('.docx', '_revised.docx')}[/green]")
+            console.print(
+                f"[green]✅ 修订校对完成！输出文件：{output_file or input_file.replace('.docx', '_revised.docx')}[/green]"
+            )
             console.print("[blue]📝 使用Word打开文档，可以看到跟踪更改：[/blue]")
             console.print("   - [red]删除线文本[/red] 表示需要删除的内容")
             console.print("   - [blue underline]下划线文本[/blue underline] 表示新插入的内容")
@@ -330,5 +371,5 @@ def revise(input_file: str, output_file: str):
         console.print(f"[red]错误：{e}[/red]")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     cli()

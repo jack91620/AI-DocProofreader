@@ -3,9 +3,9 @@
 """
 
 import os
-from typing import Dict, List, Optional
-from pydantic import BaseModel
+
 from dotenv import load_dotenv
+from pydantic import BaseModel
 
 # 加载环境变量
 load_dotenv()
@@ -13,7 +13,8 @@ load_dotenv()
 
 class AIConfig(BaseModel):
     """AI配置"""
-    provider: str = "openai"  # "openai" 或 "claude"
+
+    provider: str = "openai"  # "openai", "claude", 或 "licloud"
     api_key: str
     base_url: str = "https://api.openai.com/v1"
     model: str = "gpt-4"
@@ -23,10 +24,14 @@ class AIConfig(BaseModel):
     chunk_max_tokens: int = 6000  # 每个块的最大token数
     chunk_overlap_tokens: int = 200  # 块间重叠token数
     safe_token_buffer: int = 2000  # 安全缓冲token数
+    # licloud专用：deploy_env (PROD/ONTEST) 与 api_source 标识
+    licloud_deploy_env: str = "PROD"
+    licloud_api_source: str = "ai-doc-proofreader"
 
 
 class ProofreadingRules(BaseModel):
     """校对规则配置"""
+
     check_grammar: bool = True
     check_spelling: bool = True
     check_terminology: bool = True
@@ -36,6 +41,7 @@ class ProofreadingRules(BaseModel):
 
 class CommentStyle(BaseModel):
     """批注样式配置"""
+
     author: str = "AI校对助手"
     color: str = "red"
     highlight_color: str = "yellow"
@@ -43,14 +49,17 @@ class CommentStyle(BaseModel):
 
 class Config:
     """主配置类"""
-    
+
     def __init__(self):
         # 检测AI提供商
         provider = os.getenv("AI_PROVIDER", "").lower()
 
         # 如果未显式设置provider，自动检测
+        # 优先级: licloud > claude > openai
         if not provider:
-            if os.getenv("CLAUDE_SESSION_TOKEN") or os.getenv("ANTHROPIC_API_KEY"):
+            if os.getenv("LICLOUD_TOKEN") or os.getenv("LLM_API_TOKEN"):
+                provider = "licloud"
+            elif os.getenv("CLAUDE_SESSION_TOKEN") or os.getenv("ANTHROPIC_API_KEY"):
                 provider = "claude"
             else:
                 provider = "openai"
@@ -72,7 +81,22 @@ class Config:
             "claude-3-opus-20240229": 200000,
         }
 
-        if provider == "claude":
+        # licloud网关支持的模型token上限（按网关侧路由名命名，aws-前缀走Bedrock）
+        licloud_token_limits = {
+            "aws-claude-sonnet-4-6": 200000,
+            "aws-claude-sonnet-4-5": 200000,
+            "aws-claude-opus-4-1": 200000,
+            "aws-claude-haiku-4-5": 200000,
+        }
+
+        if provider == "licloud":
+            # licloud配置（理想汽车内部LLM网关）
+            api_key = os.getenv("LICLOUD_TOKEN") or os.getenv("LLM_API_TOKEN", "")
+            base_url = ""  # licloud SDK内部根据deploy_env自动选择
+            default_model = "aws-claude-sonnet-4-6"
+            model_name = os.getenv("LICLOUD_MODEL", default_model)
+            model_max_tokens = licloud_token_limits.get(model_name, 200000)
+        elif provider == "claude":
             # Claude配置
             api_key = os.getenv("CLAUDE_SESSION_TOKEN") or os.getenv("ANTHROPIC_API_KEY", "")
             base_url = os.getenv("ANTHROPIC_BASE_URL", "https://api.anthropic.com")
@@ -100,11 +124,13 @@ class Config:
             chunk_max_tokens=safe_max_tokens,
             chunk_overlap_tokens=int(os.getenv("CHUNK_OVERLAP_TOKENS", "200")),
             safe_token_buffer=int(os.getenv("SAFE_TOKEN_BUFFER", "1000")),
+            licloud_deploy_env=os.getenv("LICLOUD_DEPLOY_ENV", "PROD").upper(),
+            licloud_api_source=os.getenv("LICLOUD_API_SOURCE", "ai-doc-proofreader"),
         )
-        
+
         self.rules = ProofreadingRules()
         self.comment_style = CommentStyle()
-        
+
         # 计算机术语词典
         self.terminology_dict = {
             "数据库": ["数据库", "资料库"],
@@ -123,7 +149,7 @@ class Config:
             "框架": ["框架", "架构"],
             "系统": ["系统", "系统"],
         }
-        
+
         # 常见错别字
         self.typo_dict = {
             "计算机": ["计算器"],
@@ -137,19 +163,26 @@ class Config:
             "复制": ["复制"],
             "粘贴": ["贴上"],
         }
-    
+
     def validate(self) -> bool:
         """验证配置"""
         if not self.ai.api_key:
+            if self.ai.provider == "licloud":
+                raise ValueError(
+                    "licloud Token 未设置，请设置 LICLOUD_TOKEN 或 LLM_API_TOKEN 环境变量"
+                )
             if self.ai.provider == "claude":
-                raise ValueError("Claude API Key 未设置，请设置 CLAUDE_SESSION_TOKEN 或 ANTHROPIC_API_KEY 环境变量")
-            else:
-                raise ValueError("OpenAI API Key 未设置")
+                raise ValueError(
+                    "Claude API Key 未设置，请设置 CLAUDE_SESSION_TOKEN 或 ANTHROPIC_API_KEY 环境变量"
+                )
+            raise ValueError("OpenAI API Key 未设置")
 
         if self.ai.max_tokens <= 0:
             raise ValueError(f"最大token数必须为正数，当前值: {self.ai.max_tokens}")
 
         if self.ai.chunk_overlap_tokens >= self.ai.max_tokens:
-            raise ValueError(f"重叠token数 ({self.ai.chunk_overlap_tokens}) 不能大于等于最大token数 ({self.ai.max_tokens})")
+            raise ValueError(
+                f"重叠token数 ({self.ai.chunk_overlap_tokens}) 不能大于等于最大token数 ({self.ai.max_tokens})"
+            )
 
-        return True 
+        return True

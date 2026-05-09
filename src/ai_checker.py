@@ -4,48 +4,61 @@ AI校对引擎模块
 
 import json
 import re
-from typing import List, Dict, Any, Optional
+from typing import Any
+
 import openai
-from config import Config
-from text_splitter import SmartTextSplitter, TextChunk
 from rich.console import Console
-from rich.progress import Progress, TaskID
+from rich.progress import Progress
+
+from config import Config
 from logging_config import get_logger
+from text_splitter import SmartTextSplitter, TextChunk
 
 try:
     import anthropic
 except ImportError:
     anthropic = None
 
+try:
+    from licloud.apihub import DeployEnv as LicloudDeployEnv
+    from licloud.openai import LiOpenAI
+except ImportError:
+    LiOpenAI = None
+    LicloudDeployEnv = None
+
 logger = get_logger("ai_checker")
 
 
 class ProofreadingResult:
     """校对结果"""
-    
+
     def __init__(self):
         self.issues = []
         self.suggestions = []
         self.statistics = {}
-    
-    def add_issue(self, issue_type: str, text: str, suggestion: str, 
-                 severity: str = "medium", position: Optional[int] = None):
+
+    def add_issue(
+        self,
+        issue_type: str,
+        text: str,
+        suggestion: str,
+        severity: str = "medium",
+        position: int | None = None,
+    ):
         """添加校对问题"""
-        self.issues.append({
-            "type": issue_type,
-            "text": text,
-            "suggestion": suggestion,
-            "severity": severity,
-            "position": position
-        })
-    
+        self.issues.append(
+            {
+                "type": issue_type,
+                "text": text,
+                "suggestion": suggestion,
+                "severity": severity,
+                "position": position,
+            }
+        )
+
     def add_suggestion(self, text: str, suggestion: str, reason: str):
         """添加改进建议"""
-        self.suggestions.append({
-            "original": text,
-            "suggested": suggestion,
-            "reason": reason
-        })
+        self.suggestions.append({"original": text, "suggested": suggestion, "reason": reason})
 
 
 class AIChecker:
@@ -63,16 +76,18 @@ class AIChecker:
         self.provider = self.config.ai.provider
         self.client = None
         self.claude_client = None
+        self.licloud_client = None
 
-        if self.provider == "claude":
+        if self.provider == "licloud":
+            self._init_licloud_client()
+        elif self.provider == "claude":
             self._init_claude_client()
         else:
             self._init_openai_client()
 
         # 初始化文本分割器
         self.text_splitter = SmartTextSplitter(
-            max_tokens=self.config.ai.max_tokens,
-            overlap_tokens=self.config.ai.chunk_overlap_tokens
+            max_tokens=self.config.ai.max_tokens, overlap_tokens=self.config.ai.chunk_overlap_tokens
         )
         self.console = Console()
 
@@ -80,12 +95,11 @@ class AIChecker:
         """初始化OpenAI客户端"""
         try:
             self.client = openai.OpenAI(
-                api_key=self.config.ai.api_key,
-                base_url=self.config.ai.base_url
+                api_key=self.config.ai.api_key, base_url=self.config.ai.base_url
             )
-        except Exception as e:
+        except Exception:
             openai.api_key = self.config.ai.api_key
-            if hasattr(openai, 'api_base'):
+            if hasattr(openai, "api_base"):
                 openai.api_base = self.config.ai.base_url
             self.client = None
 
@@ -95,94 +109,131 @@ class AIChecker:
             raise ImportError("使用Claude需要安装anthropic库: pip install anthropic")
         self.claude_client = anthropic.Anthropic(api_key=self.config.ai.api_key)
 
-    def _call_llm(self, system_prompt: str, user_prompt: str,
-                  max_tokens: int = 2000, temperature: float = None) -> str:
-        """统一的LLM调用接口 - 支持OpenAI和Claude"""
+    def _init_licloud_client(self):
+        """初始化licloud客户端（理想汽车内部LLM网关）"""
+        if LiOpenAI is None or LicloudDeployEnv is None:
+            raise ImportError("使用licloud需要安装licloud库: pip install licloud")
+        deploy_env_str = self.config.ai.licloud_deploy_env or "PROD"
+        try:
+            deploy_env = LicloudDeployEnv[deploy_env_str]
+        except KeyError:
+            deploy_env = LicloudDeployEnv.PROD
+        self.licloud_client = LiOpenAI(
+            deploy_env=deploy_env,
+            api_key=self.config.ai.api_key,
+            api_source=self.config.ai.licloud_api_source,
+        )
+
+    def _call_llm(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        max_tokens: int = 2000,
+        temperature: float = None,
+    ) -> str:
+        """统一的LLM调用接口 - 支持OpenAI、Claude、licloud"""
         if temperature is None:
             temperature = self.config.ai.temperature
 
+        if self.provider == "licloud":
+            return self._call_licloud(system_prompt, user_prompt, max_tokens, temperature)
         if self.provider == "claude":
             return self._call_claude(system_prompt, user_prompt, max_tokens, temperature)
-        else:
-            return self._call_openai(system_prompt, user_prompt, max_tokens, temperature)
+        return self._call_openai(system_prompt, user_prompt, max_tokens, temperature)
 
-    def _call_claude(self, system_prompt: str, user_prompt: str,
-                     max_tokens: int, temperature: float) -> str:
+    def _call_licloud(
+        self, system_prompt: str, user_prompt: str, max_tokens: int, temperature: float
+    ) -> str:
+        """通过licloud网关调用LLM（OpenAI兼容接口）"""
+        response = self.licloud_client.chat.completions.create(
+            model=self.config.ai.model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+        return response.choices[0].message.content
+
+    def _call_claude(
+        self, system_prompt: str, user_prompt: str, max_tokens: int, temperature: float
+    ) -> str:
         """调用Claude API"""
         response = self.claude_client.messages.create(
             model=self.config.ai.model,
             max_tokens=max_tokens,
             temperature=temperature,
             system=system_prompt,
-            messages=[
-                {"role": "user", "content": user_prompt}
-            ]
+            messages=[{"role": "user", "content": user_prompt}],
         )
         return response.content[0].text
 
-    def _call_openai(self, system_prompt: str, user_prompt: str,
-                     max_tokens: int, temperature: float) -> str:
+    def _call_openai(
+        self, system_prompt: str, user_prompt: str, max_tokens: int, temperature: float
+    ) -> str:
         """调用OpenAI API"""
         if self.client:
             response = self.client.chat.completions.create(
                 model=self.config.ai.model,
                 messages=[
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
+                    {"role": "user", "content": user_prompt},
                 ],
                 max_tokens=max_tokens,
-                temperature=temperature
+                temperature=temperature,
             )
             return response.choices[0].message.content
-        else:
-            response = openai.ChatCompletion.create(
-                model=self.config.ai.model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                max_tokens=max_tokens,
-                temperature=temperature
-            )
-            return response.choices[0].message.content
-    
+        response = openai.ChatCompletion.create(
+            model=self.config.ai.model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+        return response.choices[0].message.content
+
     def check_text(self, text: str) -> ProofreadingResult:
         """检查文本 - 支持自动分块处理长文档"""
         # 使用改进的token估算
         estimated_tokens = self.text_splitter.token_counter.estimate_full_request_tokens(text)
         safe_limit = self.config.ai.max_tokens
-        
+
         if estimated_tokens <= safe_limit:
             # 文本不长，直接处理
             return self._check_single_text(text)
-        else:
-            # 文本太长，需要分块处理
-            self.console.print(f"[yellow]⚠️ 文本过长 (估算{estimated_tokens} tokens > {safe_limit} tokens)，启用分块处理[/yellow]")
-            return self._check_text_chunks(text)
-    
-    def check_text_by_paragraphs(self, paragraphs: List[str]) -> ProofreadingResult:
+        # 文本太长，需要分块处理
+        self.console.print(
+            f"[yellow]⚠️ 文本过长 (估算{estimated_tokens} tokens > {safe_limit} tokens)，启用分块处理[/yellow]"
+        )
+        return self._check_text_chunks(text)
+
+    def check_text_by_paragraphs(self, paragraphs: list[str]) -> ProofreadingResult:
         """按段落检查文本 - 支持自动分块处理"""
         # 使用改进的token估算
-        total_text = '\n'.join(paragraphs)
+        total_text = "\n".join(paragraphs)
         estimated_tokens = self.text_splitter.token_counter.estimate_full_request_tokens(total_text)
         safe_limit = self.config.ai.max_tokens
-        
+
         if estimated_tokens <= safe_limit:
             # 文本不长，直接处理
             return self._check_single_text(total_text)
-        else:
-            # 文本太长，按段落分块处理
-            self.console.print(f"[yellow]⚠️ 文档过长 (估算{estimated_tokens} tokens > {safe_limit} tokens)，启用分块处理[/yellow]")
-            return self._check_paragraphs_chunks(paragraphs)
-    
+        # 文本太长，按段落分块处理
+        self.console.print(
+            f"[yellow]⚠️ 文档过长 (估算{estimated_tokens} tokens > {safe_limit} tokens)，启用分块处理[/yellow]"
+        )
+        return self._check_paragraphs_chunks(paragraphs)
+
     def _check_single_text(self, text: str) -> ProofreadingResult:
         """检查单个文本块（原有逻辑）"""
         result = ProofreadingResult()
-        
+
         # 1. 基础检查
         if self.config.rules.check_spelling:
             self._check_spelling(text, result)
-        
+
         if self.config.rules.check_terminology:
             try:
                 terminology_issues = self._check_terminology(text)
@@ -193,108 +244,109 @@ class AIChecker:
                                 issue_type=issue.get("type", "术语"),
                                 text=issue.get("original", ""),
                                 suggestion=issue.get("suggested", ""),
-                                severity="medium"
+                                severity="medium",
                             )
                         else:
                             # 如果issue不是字典，跳过或记录错误
                             logger.warning(f"术语检查返回了无效格式: {type(issue)}")
             except Exception as e:
                 logger.warning(f"术语检查处理失败: {e}")
-        
+
         # 2. AI深度检查
         ai_result = self._ai_proofread(text)
         self._parse_ai_result(ai_result, result)
-        
+
         return result
-    
+
     def _check_text_chunks(self, text: str) -> ProofreadingResult:
         """分块检查长文本"""
         # 将文本按行分割为段落
-        paragraphs = [line.strip() for line in text.split('\n') if line.strip()]
+        paragraphs = [line.strip() for line in text.split("\n") if line.strip()]
         return self._check_paragraphs_chunks(paragraphs)
-    
-    def _check_paragraphs_chunks(self, paragraphs: List[str]) -> ProofreadingResult:
+
+    def _check_paragraphs_chunks(self, paragraphs: list[str]) -> ProofreadingResult:
         """按段落分块检查文档"""
         # 分割文本
         chunks = self.text_splitter.split_by_paragraphs(paragraphs)
-        
+
         # 显示分割摘要
         summary = self.text_splitter.get_split_summary(chunks)
-        self.console.print(f"[blue]📄 文档分析结果：[/blue]")
+        self.console.print("[blue]📄 文档分析结果：[/blue]")
         self.console.print(f"   - 总块数: {summary['total_chunks']}")
         self.console.print(f"   - 总token数: {summary['total_tokens']}")
         self.console.print(f"   - 平均每块: {summary['average_tokens_per_chunk']} tokens")
         self.console.print(f"   - 最大块: {summary['max_tokens_per_chunk']} tokens")
-        
+
         # 创建总结果对象
         final_result = ProofreadingResult()
-        
+
         # 使用进度条处理各个块
         with Progress() as progress:
-            task = progress.add_task(
-                "[green]处理文档块...", 
-                total=len(chunks)
-            )
-            
+            task = progress.add_task("[green]处理文档块...", total=len(chunks))
+
             for i, chunk in enumerate(chunks):
                 progress.update(
-                    task, 
-                    advance=1, 
-                    description=f"[green]处理块 {i+1}/{len(chunks)} ({chunk.token_count} tokens)..."
+                    task,
+                    advance=1,
+                    description=f"[green]处理块 {i + 1}/{len(chunks)} ({chunk.token_count} tokens)...",
                 )
-                
+
                 # 处理当前块
                 chunk_result = self._check_single_text(chunk.content)
-                
+
                 # 合并结果，调整位置信息
                 self._merge_chunk_result(final_result, chunk_result, chunk)
-        
+
         # 显示最终统计
-        self.console.print(f"[green]✅ 分块处理完成！[/green]")
+        self.console.print("[green]✅ 分块处理完成！[/green]")
         self.console.print(f"   - 发现问题: {len(final_result.issues)} 个")
         self.console.print(f"   - 改进建议: {len(final_result.suggestions)} 个")
-        
+
         return final_result
-    
-    def _merge_chunk_result(self, final_result: ProofreadingResult, chunk_result: ProofreadingResult, chunk: TextChunk):
+
+    def _merge_chunk_result(
+        self, final_result: ProofreadingResult, chunk_result: ProofreadingResult, chunk: TextChunk
+    ):
         """合并块处理结果到最终结果"""
         # 合并问题，调整段落位置
         for issue in chunk_result.issues:
             # 为块中的问题添加块信息
             issue_copy = issue.copy()
-            issue_copy['chunk_info'] = {
-                'chunk_index': chunk.chunk_index,
-                'start_paragraph': chunk.start_paragraph,
-                'end_paragraph': chunk.end_paragraph
+            issue_copy["chunk_info"] = {
+                "chunk_index": chunk.chunk_index,
+                "start_paragraph": chunk.start_paragraph,
+                "end_paragraph": chunk.end_paragraph,
             }
             final_result.issues.append(issue_copy)
-        
+
         # 合并建议
         for suggestion in chunk_result.suggestions:
             # 为块中的建议添加块信息
             suggestion_copy = suggestion.copy()
-            suggestion_copy['chunk_info'] = {
-                'chunk_index': chunk.chunk_index,
-                'start_paragraph': chunk.start_paragraph,
-                'end_paragraph': chunk.end_paragraph
+            suggestion_copy["chunk_info"] = {
+                "chunk_index": chunk.chunk_index,
+                "start_paragraph": chunk.start_paragraph,
+                "end_paragraph": chunk.end_paragraph,
             }
             final_result.suggestions.append(suggestion_copy)
-        
+
         # 合并统计信息
         chunk_stats = chunk_result.statistics
         if chunk_stats:
-            if 'chunk_statistics' not in final_result.statistics:
-                final_result.statistics['chunk_statistics'] = []
-            
-            final_result.statistics['chunk_statistics'].append({
-                'chunk_index': chunk.chunk_index,
-                'token_count': chunk.token_count,
-                'paragraph_range': f"{chunk.start_paragraph}-{chunk.end_paragraph}",
-                'issues_count': len(chunk_result.issues),
-                'suggestions_count': len(chunk_result.suggestions),
-                'stats': chunk_stats
-            })
-    
+            if "chunk_statistics" not in final_result.statistics:
+                final_result.statistics["chunk_statistics"] = []
+
+            final_result.statistics["chunk_statistics"].append(
+                {
+                    "chunk_index": chunk.chunk_index,
+                    "token_count": chunk.token_count,
+                    "paragraph_range": f"{chunk.start_paragraph}-{chunk.end_paragraph}",
+                    "issues_count": len(chunk_result.issues),
+                    "suggestions_count": len(chunk_result.suggestions),
+                    "stats": chunk_stats,
+                }
+            )
+
     def _check_spelling(self, text: str, result: ProofreadingResult):
         """检查拼写错误"""
         for correct, typos in self.config.typo_dict.items():
@@ -304,10 +356,10 @@ class AIChecker:
                         issue_type="拼写错误",
                         text=typo,
                         suggestion=f"建议改为：{correct}",
-                        severity="high"
+                        severity="high",
                     )
-    
-    def _check_terminology(self, text: str) -> List[Dict]:
+
+    def _check_terminology(self, text: str) -> list[dict]:
         """检查术语一致性 - 带重试机制"""
         max_retries = 3
         base_delay = 1
@@ -324,7 +376,7 @@ class AIChecker:
                     system_prompt="你是术语检查专家，检查技术文档术语一致性。",
                     user_prompt=prompt,
                     max_tokens=800,
-                    temperature=0.1
+                    temperature=0.1,
                 )
 
                 result = self._parse_json_response(content)
@@ -339,29 +391,35 @@ class AIChecker:
             except Exception as e:
                 error_msg = str(e).lower()
 
-                if any(keyword in error_msg for keyword in ['server error', '500', 'timeout', 'connection', 'overloaded']):
+                if any(
+                    keyword in error_msg
+                    for keyword in ["server error", "500", "timeout", "connection", "overloaded"]
+                ):
                     if attempt < max_retries - 1:
-                        delay = base_delay * (2 ** attempt)
-                        self.console.print(f"[yellow]⚠️ 术语检查遇到服务器错误，{delay}秒后重试 (尝试 {attempt + 1}/{max_retries})[/yellow]")
+                        delay = base_delay * (2**attempt)
+                        self.console.print(
+                            f"[yellow]⚠️ 术语检查遇到服务器错误，{delay}秒后重试 (尝试 {attempt + 1}/{max_retries})[/yellow]"
+                        )
                         import time
+
                         time.sleep(delay)
                         continue
-                    else:
-                        self.console.print(f"[yellow]⚠️ 术语检查最终失败，跳过此检查: {e}[/yellow]")
-                        return []
-                else:
-                    self.console.print(f"[yellow]⚠️ 术语检查失败: {e}[/yellow]")
+                    self.console.print(f"[yellow]⚠️ 术语检查最终失败，跳过此检查: {e}[/yellow]")
                     return []
+                self.console.print(f"[yellow]⚠️ 术语检查失败: {e}[/yellow]")
+                return []
 
         return []
-    
-    def _ai_proofread(self, text: str) -> Dict[str, Any]:
+
+    def _ai_proofread(self, text: str) -> dict[str, Any]:
         """AI深度校对"""
         try:
             prompt = self._build_proofread_prompt(text)
 
             input_tokens = self.text_splitter.token_counter.estimate_full_request_tokens(text)
-            max_completion_tokens = min(2000, max(500, self.config.ai.max_tokens - input_tokens - 500))
+            max_completion_tokens = min(
+                2000, max(500, self.config.ai.max_tokens - input_tokens - 500)
+            )
 
             if max_completion_tokens < 500:
                 logger.warning(f"输入过长 ({input_tokens} tokens)，建议使用分块处理")
@@ -370,7 +428,7 @@ class AIChecker:
             result_text = self._call_llm(
                 system_prompt="你是一个专业的中文计算机教材校对专家。请仔细检查文本中的语法、用词、逻辑和专业术语问题。",
                 user_prompt=prompt,
-                max_tokens=max_completion_tokens
+                max_tokens=max_completion_tokens,
             )
 
             return self._parse_json_response(result_text)
@@ -378,7 +436,7 @@ class AIChecker:
         except Exception as e:
             logger.error(f"AI校对失败: {e}")
             return {"issues": [], "suggestions": []}
-    
+
     def _build_proofread_prompt(self, text: str) -> str:
         """构建校对提示词 - 优化JSON输出格式"""
         return f"""
@@ -407,7 +465,7 @@ class AIChecker:
 
 **检查要点：**
 1. 错别字和用词不当
-2. 语法错误和句式问题  
+2. 语法错误和句式问题
 3. 计算机术语的准确性
 4. 标点符号使用
 5. 逻辑表达问题
@@ -417,226 +475,230 @@ class AIChecker:
 
 **请只返回上述JSON格式的结果，不要包含其他内容。**
 """
-    
-    def _parse_json_response(self, response_text: str) -> Dict[str, Any]:
+
+    def _parse_json_response(self, response_text: str) -> dict[str, Any]:
         """解析AI返回的JSON响应 - 超强容错版本"""
         try:
             # 先尝试清理和预处理响应文本
             cleaned_text = self._clean_ai_response(response_text)
-            
+
             # 尝试提取JSON部分
-            json_start = cleaned_text.find('{')
-            json_end = cleaned_text.rfind('}') + 1
-            
+            json_start = cleaned_text.find("{")
+            json_end = cleaned_text.rfind("}") + 1
+
             if json_start != -1 and json_end != -1:
                 json_text = cleaned_text[json_start:json_end]
-                
+
                 # 首先尝试直接解析
                 try:
                     return json.loads(json_text)
-                except json.JSONDecodeError as e:
+                except json.JSONDecodeError:
                     # 尝试多种修复方法
                     for fix_method in [
                         self._fix_common_json_issues,
                         self._fix_nested_json_issues,
                         self._fix_quote_issues,
-                        self._fix_aggressive_json_issues  # 新增激进修复
+                        self._fix_aggressive_json_issues,  # 新增激进修复
                     ]:
                         try:
                             fixed_json = fix_method(json_text)
                             return json.loads(fixed_json)
                         except json.JSONDecodeError:
                             continue
-                    
+
                     # 如果所有修复都失败，尝试智能文本解析
                     self.console.print("[yellow]JSON修复失败，使用智能文本解析[/yellow]")
                     return self._parse_text_fallback_smart(response_text)
-                        
+
         except Exception as e:
             self.console.print(f"[yellow]解析AI响应失败: {e}[/yellow]")
-        
+
         return {"issues": [], "suggestions": []}
-    
+
     def _clean_ai_response(self, response_text: str) -> str:
         """清理AI响应文本"""
-        
+
         # 移除markdown代码块标记
-        response_text = re.sub(r'```json\s*', '', response_text)
-        response_text = re.sub(r'```\s*$', '', response_text)
-        
+        response_text = re.sub(r"```json\s*", "", response_text)
+        response_text = re.sub(r"```\s*$", "", response_text)
+
         # 移除多余的空行和空格
-        response_text = re.sub(r'\n\s*\n', '\n', response_text)
-        
+        response_text = re.sub(r"\n\s*\n", "\n", response_text)
+
         # 移除AI可能添加的说明文字
-        lines = response_text.split('\n')
+        lines = response_text.split("\n")
         cleaned_lines = []
         json_started = False
-        
-        for line in lines:
-            line = line.strip()
-            if line.startswith('{') or json_started:
+
+        for raw_line in lines:
+            line = raw_line.strip()
+            if line.startswith("{") or json_started:
                 json_started = True
                 cleaned_lines.append(line)
-            elif line.endswith('}') and json_started:
+            elif line.endswith("}") and json_started:
                 cleaned_lines.append(line)
                 break
-        
-        return '\n'.join(cleaned_lines)
-    
+
+        return "\n".join(cleaned_lines)
+
     def _fix_nested_json_issues(self, json_text: str) -> str:
         """修复嵌套JSON的问题"""
-        
+
         # 修复嵌套对象中缺失的逗号
-        json_text = re.sub(r'}\s*{', '},{', json_text)
-        
+        json_text = re.sub(r"}\s*{", "},{", json_text)
+
         # 修复数组中缺失的逗号
-        json_text = re.sub(r']\s*\[', '],[', json_text)
-        
+        json_text = re.sub(r"]\s*\[", "],[", json_text)
+
         # 修复对象和数组混合的问题
-        json_text = re.sub(r'}\s*\[', '},[', json_text)
-        json_text = re.sub(r']\s*{', '],{', json_text)
-        
+        json_text = re.sub(r"}\s*\[", "},[", json_text)
+        json_text = re.sub(r"]\s*{", "],{", json_text)
+
         return json_text
-    
+
     def _fix_quote_issues(self, json_text: str) -> str:
         """修复引号问题"""
-        
+
         # 修复单引号为双引号
         json_text = json_text.replace("'", '"')
-        
+
         # 修复值中包含换行符的问题
         json_text = re.sub(r'"([^"]*?)\n([^"]*?)"', r'"\1 \2"', json_text)
-        
+
         # 修复值中包含特殊字符的问题
         json_text = re.sub(r'"([^"]*?)"([^,}\]]*?)"', r'"\1\2"', json_text)
-        
+
         return json_text
-    
+
     def _fix_common_json_issues(self, json_text: str) -> str:
         """修复常见的JSON格式问题"""
-        
+
         # 移除多余的逗号（在}或]前的逗号）
-        json_text = re.sub(r',(\s*[}\]])', r'\1', json_text)
-        
+        json_text = re.sub(r",(\s*[}\]])", r"\1", json_text)
+
         # 修复缺失的逗号（在"后面直接跟"的情况）
         json_text = re.sub(r'"\s*\n\s*"', '",\n"', json_text)
-        
+
         # 修复缺失的逗号（在}后面直接跟{的情况）
-        json_text = re.sub(r'}\s*\n\s*{', '},\n{', json_text)
-        
+        json_text = re.sub(r"}\s*\n\s*{", "},\n{", json_text)
+
         # 移除JSON中的注释
-        json_text = re.sub(r'//.*?\n', '\n', json_text)
-        
+        json_text = re.sub(r"//.*?\n", "\n", json_text)
+
         # 确保字符串值被正确引用
         json_text = re.sub(r':\s*([^",{}\[\]\n]+)(?=\s*[,}\]])', r': "\1"', json_text)
-        
+
         return json_text
-    
+
     def _fix_aggressive_json_issues(self, json_text: str) -> str:
         """激进的JSON修复方法"""
-        
+
         # 移除所有换行符并重新格式化
-        json_text = re.sub(r'\s*\n\s*', ' ', json_text)
-        
+        json_text = re.sub(r"\s*\n\s*", " ", json_text)
+
         # 修复属性名没有引号的问题
-        json_text = re.sub(r'(\w+):', r'"\1":', json_text)
-        
+        json_text = re.sub(r"(\w+):", r'"\1":', json_text)
+
         # 修复值没有引号的问题（排除数字、布尔值、null）
         json_text = re.sub(r':\s*([^",{\[\]}\s][^,}\]]*?)(?=[,}\]])', r': "\1"', json_text)
-        
+
         # 修复多余的逗号
-        json_text = re.sub(r',\s*([}\]])', r'\1', json_text)
-        
+        json_text = re.sub(r",\s*([}\]])", r"\1", json_text)
+
         # 修复缺失的逗号
-        json_text = re.sub(r'([}\]"])\s*([{\[""])', r'\1,\2', json_text)
-        
+        json_text = re.sub(r'([}\]"])\s*([{\[""])', r"\1,\2", json_text)
+
         # 修复嵌套问题
-        json_text = re.sub(r'}\s*{', '},{', json_text)
-        
+        json_text = re.sub(r"}\s*{", "},{", json_text)
+
         return json_text
-    
-    def _parse_text_fallback_smart(self, response_text: str) -> Dict[str, Any]:
+
+    def _parse_text_fallback_smart(self, response_text: str) -> dict[str, Any]:
         """智能文本解析 - 改进版"""
         result = {"issues": [], "suggestions": []}
-        
+
         try:
             # 查找可能的问题描述
             issue_patterns = [
-                r'(?:问题|错误|error|issue)[:：]\s*([^\n]+)',
-                r'(?:原文|原始|original)[:：]\s*([^\n]+)',
-                r'(?:建议|修改|suggested?)[:：]\s*([^\n]+)',
-                r'(?:类型|type)[:：]\s*([^\n]+)',
+                r"(?:问题|错误|error|issue)[:：]\s*([^\n]+)",
+                r"(?:原文|原始|original)[:：]\s*([^\n]+)",
+                r"(?:建议|修改|suggested?)[:：]\s*([^\n]+)",
+                r"(?:类型|type)[:：]\s*([^\n]+)",
             ]
-            
+
             suggestions = []
             issues = []
-            
+
             # 尝试从原始文本中提取修改建议
-            lines = response_text.split('\n')
-            for line in lines:
-                line = line.strip()
+            lines = response_text.split("\n")
+            for raw_line in lines:
+                line = raw_line.strip()
                 if not line:
                     continue
-                
+
                 # 查找 "原文 -> 修改" 模式
-                arrow_match = re.search(r'(.+?)\s*[→->]\s*(.+)', line)
+                arrow_match = re.search(r"(.+?)\s*[→->]\s*(.+)", line)
                 if arrow_match:
                     original = arrow_match.group(1).strip()
                     suggested = arrow_match.group(2).strip()
-                    
+
                     # 清理引号和标点
-                    original = re.sub(r'^["\'"]*|["\'"]*$', '', original)
-                    suggested = re.sub(r'^["\'"]*|["\'"]*$', '', suggested)
-                    
+                    original = re.sub(r'^["\'"]*|["\'"]*$', "", original)
+                    suggested = re.sub(r'^["\'"]*|["\'"]*$', "", suggested)
+
                     if original and suggested and original != suggested:
-                        suggestions.append({
-                            "original": original,
-                            "suggested": suggested,
-                            "reason": "AI自动解析的建议"
-                        })
+                        suggestions.append(
+                            {
+                                "original": original,
+                                "suggested": suggested,
+                                "reason": "AI自动解析的建议",
+                            }
+                        )
                         continue
-                
+
                 # 查找问题描述
                 for pattern in issue_patterns:
                     match = re.search(pattern, line, re.IGNORECASE)
                     if match:
                         text = match.group(1).strip()
                         if text:
-                            issues.append({
-                                "type": "解析问题",
-                                "text": text,
-                                "suggestion": "请参考原文进行修改",
-                                "severity": "medium"
-                            })
+                            issues.append(
+                                {
+                                    "type": "解析问题",
+                                    "text": text,
+                                    "suggestion": "请参考原文进行修改",
+                                    "severity": "medium",
+                                }
+                            )
                         break
-            
+
             # 如果没有找到结构化信息，尝试提取关键词
             if not suggestions and not issues:
                 # 查找可能的术语或修改建议
-                potential_corrections = re.findall(r'([^\s]+)\s*[→->]\s*([^\s]+)', response_text)
+                potential_corrections = re.findall(r"([^\s]+)\s*[→->]\s*([^\s]+)", response_text)
                 for orig, sugg in potential_corrections:
                     if orig != sugg and len(orig) > 1 and len(sugg) > 1:
-                        suggestions.append({
-                            "original": orig,
-                            "suggested": sugg,
-                            "reason": "文本解析提取的建议"
-                        })
-            
+                        suggestions.append(
+                            {"original": orig, "suggested": sugg, "reason": "文本解析提取的建议"}
+                        )
+
             result["suggestions"] = suggestions
             result["issues"] = issues
-            
+
             # 记录解析结果
             if suggestions or issues:
-                self.console.print(f"[green]✅ 智能文本解析成功: {len(suggestions)} 个建议, {len(issues)} 个问题[/green]")
+                self.console.print(
+                    f"[green]✅ 智能文本解析成功: {len(suggestions)} 个建议, {len(issues)} 个问题[/green]"
+                )
             else:
                 self.console.print("[yellow]⚠️ 智能文本解析未找到有效信息[/yellow]")
-                
+
         except Exception as e:
             self.console.print(f"[yellow]智能文本解析失败: {e}[/yellow]")
-        
+
         return result
-    
-    def _parse_ai_result(self, ai_result: Dict[str, Any], result: ProofreadingResult):
+
+    def _parse_ai_result(self, ai_result: dict[str, Any], result: ProofreadingResult):
         """解析AI校对结果"""
         # 添加AI发现的问题
         for issue in ai_result.get("issues", []):
@@ -644,22 +706,22 @@ class AIChecker:
                 issue_type=issue.get("type", "其他"),
                 text=issue.get("text", ""),
                 suggestion=issue.get("suggestion", ""),
-                severity=issue.get("severity", "medium")
+                severity=issue.get("severity", "medium"),
             )
-        
+
         # 添加AI的建议
         for suggestion in ai_result.get("suggestions", []):
             result.add_suggestion(
                 text=suggestion.get("original", ""),
                 suggestion=suggestion.get("suggested", ""),
-                reason=suggestion.get("reason", "")
+                reason=suggestion.get("reason", ""),
             )
-        
+
         # 保存整体评价
         if "overall_assessment" in ai_result:
             result.statistics["overall_assessment"] = ai_result["overall_assessment"]
-    
-    def check_grammar(self, text: str) -> List[Dict[str, str]]:
+
+    def check_grammar(self, text: str) -> list[dict[str, str]]:
         """专门检查语法问题"""
         try:
             prompt = f"""请检查以下中文文本的语法问题，包括：
@@ -686,7 +748,7 @@ class AIChecker:
                 system_prompt="你是一个中文语法专家。",
                 user_prompt=prompt,
                 max_tokens=2000,
-                temperature=0.1
+                temperature=0.1,
             )
 
             result = self._parse_json_response(result_text)
@@ -695,26 +757,26 @@ class AIChecker:
         except Exception as e:
             logger.error(f"语法检查失败: {e}")
             return []
-    
-    def check_document(self, text_content: List[str]):
+
+    def check_document(self, text_content: list[str]):
         """检查整个文档"""
         try:
             # 将段落合并为完整文本
-            full_text = '\n'.join(text_content)
-            
+            full_text = "\n".join(text_content)
+
             # 使用AI进行深度校对
             ai_result = self._ai_proofread(full_text)
-            
+
             # 创建校对结果对象
             result = ProofreadingResult()
-            
+
             # 解析AI结果
             self._parse_ai_result(ai_result, result)
-            
+
             # 添加基础检查
             if self.config.rules.check_spelling:
                 self._check_spelling(full_text, result)
-            
+
             if self.config.rules.check_terminology:
                 terminology_issues = self._check_terminology(full_text)
                 for issue in terminology_issues:
@@ -723,12 +785,12 @@ class AIChecker:
                             issue_type=issue.get("type", "术语"),
                             text=issue.get("original", ""),
                             suggestion=issue.get("suggested", ""),
-                            severity="medium"
+                            severity="medium",
                         )
-            
+
             return result
-            
+
         except Exception as e:
             logger.error(f"文档检查失败: {e}")
             # 返回空结果
-            return ProofreadingResult() 
+            return ProofreadingResult()

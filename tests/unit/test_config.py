@@ -2,11 +2,12 @@
 
 import os
 import sys
+
 import pytest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
-from config import Config, AIConfig, ProofreadingRules, CommentStyle
+from config import AIConfig, CommentStyle, Config, ProofreadingRules
 
 
 class TestAIConfig:
@@ -65,7 +66,8 @@ class TestConfig:
     def test_validate_fails_without_api_key(self):
         config = Config()
         config.ai.api_key = ""
-        with pytest.raises(ValueError, match="API Key"):
+        # 错误文案随 provider 不同：openai→API Key, claude→API Key, licloud→Token
+        with pytest.raises(ValueError, match=r"API Key|Token"):
             config.validate()
 
     def test_validate_fails_with_bad_overlap(self):
