@@ -4,15 +4,20 @@
 
 import os
 import re
-from typing import List
 from datetime import datetime
+
 from docx import Document
 from rich.console import Console
 
-from .base import OutputStrategy, Correction
-from word_ops.track_changes import WordTrackChangesManager, enable_track_changes_in_docx
-from word_ops.comments import WordCommentsManager, create_comments_xml, create_document_rels, update_content_types
+from word_ops.comments import (
+    create_comments_xml,
+    create_document_rels,
+    update_content_types,
+)
 from word_ops.docx_packager import modify_docx_package
+from word_ops.track_changes import WordTrackChangesManager
+
+from .base import Correction, OutputStrategy
 
 
 class EnhancedStrategy(OutputStrategy):
@@ -24,12 +29,19 @@ class EnhancedStrategy(OutputStrategy):
     def get_output_suffix(self) -> str:
         return "tracked_with_comments_fixed"
 
-    def apply_corrections(self, doc: Document, corrections: List[Correction], text_content: List[str],
-                          input_file: str, output_file: str) -> bool:
+    def apply_corrections(
+        self,
+        doc: Document,
+        corrections: list[Correction],
+        text_content: list[str],
+        input_file: str,
+        output_file: str,
+    ) -> bool:
         try:
             if not corrections:
                 self.console.print("[yellow]⚠️ 未发现需要修改的问题，直接复制原文档[/yellow]")
                 import shutil
+
                 shutil.copy2(input_file, output_file)
                 return True
 
@@ -43,10 +55,13 @@ class EnhancedStrategy(OutputStrategy):
         except Exception as e:
             self.console.print(f"[red]❌ 增强模式校对失败: {e}[/red]")
             import traceback
+
             traceback.print_exc()
             return False
 
-    def _build_synchronized_changes(self, corrections: List[Correction], text_content: List[str], doc: Document) -> list:
+    def _build_synchronized_changes(
+        self, corrections: list[Correction], text_content: list[str], doc: Document
+    ) -> list:
         """从Correction列表构建同步更改数据"""
         synchronized_changes = []
 
@@ -59,7 +74,10 @@ class EnhancedStrategy(OutputStrategy):
                 text_index += 1
 
         for correction in corrections:
-            if not correction.corrected_text or correction.corrected_text == correction.original_text:
+            if (
+                not correction.corrected_text
+                or correction.corrected_text == correction.original_text
+            ):
                 continue
 
             # 在所有段落中查找匹配项
@@ -70,11 +88,11 @@ class EnhancedStrategy(OutputStrategy):
 
                     for occurrence in range(occurrences):
                         # 创建批注文本
-                        if correction.correction_type == 'suggestion':
+                        if correction.correction_type == "suggestion":
                             comment_text = f"💡 改进建议: {correction.original_text} → {correction.corrected_text}\n"
                             comment_text += f"📋 原因: {correction.reason}\n"
-                            comment_text += f"🎯 类型: 改进建议\n"
-                        elif correction.correction_type == 'terminology':
+                            comment_text += "🎯 类型: 改进建议\n"
+                        elif correction.correction_type == "terminology":
                             comment_text = f"🔍 术语不一致修正: {correction.original_text} → {correction.corrected_text}\n"
                             comment_text += f"📝 理由: {correction.reason}\n"
                         else:
@@ -83,33 +101,36 @@ class EnhancedStrategy(OutputStrategy):
 
                         comment_text += f"⏰ 处理时间: {datetime.now().strftime('%Y-%m-%d %H:%M')}"
 
-                        synchronized_changes.append({
-                            'paragraph_index': actual_paragraph_index,
-                            'original_text': correction.original_text,
-                            'corrected_text': correction.corrected_text,
-                            'comment_text': comment_text,
-                            'reason': correction.reason,
-                            'type': correction.correction_type,
-                            'occurrence_index': occurrence
-                        })
+                        synchronized_changes.append(
+                            {
+                                "paragraph_index": actual_paragraph_index,
+                                "original_text": correction.original_text,
+                                "corrected_text": correction.corrected_text,
+                                "comment_text": comment_text,
+                                "reason": correction.reason,
+                                "type": correction.correction_type,
+                                "occurrence_index": occurrence,
+                            }
+                        )
 
         return synchronized_changes
 
-    def _apply_synchronized_changes(self, doc: Document, synchronized_changes: list, output_file: str) -> bool:
+    def _apply_synchronized_changes(
+        self, doc: Document, synchronized_changes: list, output_file: str
+    ) -> bool:
         """应用同步更改"""
         try:
             track_changes_manager = WordTrackChangesManager(doc)
-            comments_manager = WordCommentsManager(doc)
 
             applied_count = 0
             comments_data = []
 
             for change in synchronized_changes:
-                paragraph_index = change.get('paragraph_index', 0)
-                original_text = change.get('original_text', '')
-                corrected_text = change.get('corrected_text', '')
-                comment_text = change.get('comment_text', '')
-                reason = change.get('reason', '')
+                paragraph_index = change.get("paragraph_index", 0)
+                original_text = change.get("original_text", "")
+                corrected_text = change.get("corrected_text", "")
+                comment_text = change.get("comment_text", "")
+                reason = change.get("reason", "")
 
                 if paragraph_index < len(doc.paragraphs):
                     paragraph = doc.paragraphs[paragraph_index]
@@ -119,25 +140,29 @@ class EnhancedStrategy(OutputStrategy):
                     )
 
                     if track_success:
-                        comments_data.append({
-                            'id': applied_count + 1,
-                            'text': comment_text,
-                            'author': 'AI校对助手',
-                            'date': datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ"),
-                            'paragraph_index': paragraph_index,
-                            'target_text': original_text
-                        })
+                        comments_data.append(
+                            {
+                                "id": applied_count + 1,
+                                "text": comment_text,
+                                "author": "AI校对助手",
+                                "date": datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ"),
+                                "paragraph_index": paragraph_index,
+                                "target_text": original_text,
+                            }
+                        )
                         applied_count += 1
 
             # 应用所有跟踪更改
             track_changes_manager.apply_all_changes()
 
             # 保存临时文档（只包含跟踪更改）
-            temp_file = output_file.replace('.docx', '_temp_with_track_changes.docx')
+            temp_file = output_file.replace(".docx", "_temp_with_track_changes.docx")
             doc.save(temp_file)
 
             # 创建最终文档（带跟踪更改+批注）
-            success = self._create_final_document(temp_file, output_file, track_changes_manager.revisions_data, comments_data)
+            success = self._create_final_document(
+                temp_file, output_file, track_changes_manager.revisions_data, comments_data
+            )
 
             # 清理临时文件
             if os.path.exists(temp_file):
@@ -151,7 +176,9 @@ class EnhancedStrategy(OutputStrategy):
             self.console.print(f"[red]❌ 应用更改和批注失败: {e}[/red]")
             return False
 
-    def _create_final_document(self, temp_file: str, output_file: str, revisions_data, comments_data: list) -> bool:
+    def _create_final_document(
+        self, temp_file: str, output_file: str, revisions_data, comments_data: list
+    ) -> bool:
         """创建最终文档（跟踪更改+批注）"""
         try:
             import shutil
@@ -162,12 +189,16 @@ class EnhancedStrategy(OutputStrategy):
 
             def modifier(temp_dir):
                 # 1. 启用跟踪更改
-                from word_ops.track_changes import enable_track_changes_setting, verify_document_revisions
+                from word_ops.track_changes import (
+                    enable_track_changes_setting,
+                    verify_document_revisions,
+                )
+
                 enable_track_changes_setting(temp_dir)
                 verify_document_revisions(temp_dir)
 
                 # 2. 创建comments.xml
-                comments_xml_path = os.path.join(temp_dir, 'word', 'comments.xml')
+                comments_xml_path = os.path.join(temp_dir, "word", "comments.xml")
                 create_comments_xml(comments_xml_path, comments_data)
 
                 # 3. 更新文档关系
@@ -177,12 +208,14 @@ class EnhancedStrategy(OutputStrategy):
                 update_content_types(temp_dir)
 
                 # 5. 添加批注引用到document.xml
-                document_xml_path = os.path.join(temp_dir, 'word', 'document.xml')
-                with open(document_xml_path, 'r', encoding='utf-8') as f:
+                document_xml_path = os.path.join(temp_dir, "word", "document.xml")
+                with open(document_xml_path, encoding="utf-8") as f:
                     document_content = f.read()
 
-                updated_document = self._add_comment_references_to_document(document_content, comments_data)
-                with open(document_xml_path, 'w', encoding='utf-8') as f:
+                updated_document = self._add_comment_references_to_document(
+                    document_content, comments_data
+                )
+                with open(document_xml_path, "w", encoding="utf-8") as f:
                     f.write(updated_document)
 
                 return True
@@ -193,6 +226,7 @@ class EnhancedStrategy(OutputStrategy):
             self.console.print(f"[red]❌ 创建最终文档失败: {e}[/red]")
             try:
                 import shutil
+
                 shutil.copy2(temp_file, output_file)
                 return True
             except Exception:
@@ -204,7 +238,7 @@ class EnhancedStrategy(OutputStrategy):
             modified_xml = document_xml
 
             for comment in comments_data:
-                comment_id = comment['id']
+                comment_id = comment["id"]
 
                 del_pattern = f'(<w:del[^>]*w:id="{comment_id}"[^>]*>.*?</w:del>)'
                 matches = re.finditer(del_pattern, modified_xml, re.DOTALL)
@@ -214,7 +248,7 @@ class EnhancedStrategy(OutputStrategy):
                     comment_range_end = f'<w:commentRangeEnd w:id="{comment_id}"/>'
                     comment_reference = f'<w:r><w:commentReference w:id="{comment_id}"/></w:r>'
 
-                    replacement = f'{comment_range_start}{match.group(0)}{comment_range_end}{comment_reference}'
+                    replacement = f"{comment_range_start}{match.group(0)}{comment_range_end}{comment_reference}"
                     modified_xml = modified_xml.replace(match.group(0), replacement, 1)
                     break
 

@@ -11,14 +11,15 @@ AI校对助手
 - 配置管理
 """
 
-from .proofreader import ProofReader
-from .config import Config
-
-import sys
 import os
+import sys
+
+from .config import Config
+from .proofreader import ProofReader
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from version import __version__
 
 __author__ = "AI Assistant"
 
-__all__ = ["ProofReader", "Config"]
+__all__ = ["Config", "ProofReader"]

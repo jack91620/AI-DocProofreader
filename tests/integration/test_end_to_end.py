@@ -3,11 +3,12 @@
 import os
 import sys
 import tempfile
+from unittest.mock import patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 from docx import Document
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
 
 @pytest.mark.integration
@@ -52,8 +53,10 @@ class TestEndToEnd:
 
             pr = create_proofreader("fake-key", "comments")
 
-            with patch.object(pr.ai_checker, "_ai_proofread", return_value=mock_ai_result), \
-                 patch.object(pr.ai_checker, "_check_terminology", return_value=[]):
+            with (
+                patch.object(pr.ai_checker, "_ai_proofread", return_value=mock_ai_result),
+                patch.object(pr.ai_checker, "_check_terminology", return_value=[]),
+            ):
                 result = pr.proofread_document(input_path, output_path)
 
             assert result is True
@@ -96,8 +99,10 @@ class TestEndToEnd:
 
             pr = create_proofreader("fake-key", "revisions")
 
-            with patch.object(pr.ai_checker, "_ai_proofread", return_value=mock_ai_result), \
-                 patch.object(pr.ai_checker, "_check_terminology", return_value=[]):
+            with (
+                patch.object(pr.ai_checker, "_ai_proofread", return_value=mock_ai_result),
+                patch.object(pr.ai_checker, "_check_terminology", return_value=[]),
+            ):
                 result = pr.proofread_document(input_path, output_path)
 
             assert result is True
@@ -126,8 +131,10 @@ class TestEndToEnd:
 
             pr = create_proofreader("fake-key", "comments")
 
-            with patch.object(pr.ai_checker, "_ai_proofread", return_value=mock_ai_result), \
-                 patch.object(pr.ai_checker, "_check_terminology", return_value=[]):
+            with (
+                patch.object(pr.ai_checker, "_ai_proofread", return_value=mock_ai_result),
+                patch.object(pr.ai_checker, "_check_terminology", return_value=[]),
+            ):
                 result = pr.proofread_document(input_path, output_path)
 
             assert result is True

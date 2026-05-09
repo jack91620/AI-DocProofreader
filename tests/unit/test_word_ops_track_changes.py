@@ -5,9 +5,7 @@ import sys
 import tempfile
 import xml.etree.ElementTree as ET
 
-import pytest
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
 from docx import Document
 from docx.oxml.ns import qn
@@ -34,12 +32,12 @@ class TestWordTrackChangesManager:
         assert len(mgr.revisions_data) == 1
 
         rev = mgr.revisions_data[0]
-        assert rev['original_text'] == "测试"
-        assert rev['corrected_text'] == "测验"
-        assert rev['reason'] == "用词修正"
-        assert rev['del_id'] == 1
-        assert rev['ins_id'] == 1001
-        assert rev['author'] == "AI校对助手"
+        assert rev["original_text"] == "测试"
+        assert rev["corrected_text"] == "测验"
+        assert rev["reason"] == "用词修正"
+        assert rev["del_id"] == 1
+        assert rev["ins_id"] == 1001
+        assert rev["author"] == "AI校对助手"
 
     def test_add_multiple_changes_same_paragraph(self):
         """同一段落添加两个更改，paragraph_changes正确跟踪"""
@@ -55,9 +53,9 @@ class TestWordTrackChangesManager:
 
         para_id = id(para)
         assert para_id in mgr.paragraph_changes
-        assert len(mgr.paragraph_changes[para_id]['changes']) == 2
-        assert mgr.paragraph_changes[para_id]['changes'][0]['original_text'] == "第一个错误"
-        assert mgr.paragraph_changes[para_id]['changes'][1]['original_text'] == "第二个错误"
+        assert len(mgr.paragraph_changes[para_id]["changes"]) == 2
+        assert mgr.paragraph_changes[para_id]["changes"][0]["original_text"] == "第一个错误"
+        assert mgr.paragraph_changes[para_id]["changes"][1]["original_text"] == "第二个错误"
 
     def test_apply_all_changes(self):
         """应用更改后，段落XML包含w:del和w:ins元素"""
@@ -95,12 +93,12 @@ class TestCreateElements:
         mgr = self._make_manager()
         el = mgr._create_deletion_element("被删除文字", 42)
 
-        assert el.tag == qn('w:del')
-        assert el.get(qn('w:id')) == '42'
-        assert el.get(qn('w:author')) == "AI校对助手"
-        assert el.get(qn('w:date')) == mgr.date
+        assert el.tag == qn("w:del")
+        assert el.get(qn("w:id")) == "42"
+        assert el.get(qn("w:author")) == "AI校对助手"
+        assert el.get(qn("w:date")) == mgr.date
 
-        del_texts = el.findall(f'.//{qn("w:delText")}')
+        del_texts = el.findall(f".//{qn('w:delText')}")
         assert len(del_texts) == 1
         assert del_texts[0].text == "被删除文字"
 
@@ -109,12 +107,12 @@ class TestCreateElements:
         mgr = self._make_manager()
         el = mgr._create_insertion_element("插入文字", 99)
 
-        assert el.tag == qn('w:ins')
-        assert el.get(qn('w:id')) == '99'
-        assert el.get(qn('w:author')) == "AI校对助手"
-        assert el.get(qn('w:date')) == mgr.date
+        assert el.tag == qn("w:ins")
+        assert el.get(qn("w:id")) == "99"
+        assert el.get(qn("w:author")) == "AI校对助手"
+        assert el.get(qn("w:date")) == mgr.date
 
-        t_elements = el.findall(f'.//{qn("w:t")}')
+        t_elements = el.findall(f".//{qn('w:t')}")
         assert len(t_elements) == 1
         assert t_elements[0].text == "插入文字"
 
@@ -122,7 +120,7 @@ class TestCreateElements:
 class TestEnableTrackChangesSetting:
     """enable_track_changes_setting功能测试"""
 
-    _NS_W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
+    _NS_W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 
     def _make_minimal_settings_xml(self, word_dir):
         """在word_dir下创建最小settings.xml"""
@@ -130,15 +128,15 @@ class TestEnableTrackChangesSetting:
             '<?xml version="1.0" encoding="UTF-8"?>'
             f'<w:settings xmlns:w="{self._NS_W}"></w:settings>'
         )
-        settings_path = os.path.join(word_dir, 'settings.xml')
-        with open(settings_path, 'w', encoding='utf-8') as f:
+        settings_path = os.path.join(word_dir, "settings.xml")
+        with open(settings_path, "w", encoding="utf-8") as f:
             f.write(content)
         return settings_path
 
     def test_creates_setting(self):
         """已有settings.xml时，添加trackRevisions元素"""
         with tempfile.TemporaryDirectory() as tmp:
-            word_dir = os.path.join(tmp, 'word')
+            word_dir = os.path.join(tmp, "word")
             os.makedirs(word_dir)
             settings_path = self._make_minimal_settings_xml(word_dir)
 
@@ -146,18 +144,18 @@ class TestEnableTrackChangesSetting:
 
             tree = ET.parse(settings_path)
             root = tree.getroot()
-            ns = {'w': self._NS_W}
-            track = root.find('.//w:trackRevisions', ns)
+            ns = {"w": self._NS_W}
+            track = root.find(".//w:trackRevisions", ns)
 
             assert track is not None
-            assert track.get(f'{{{self._NS_W}}}val') == '1'
+            assert track.get(f"{{{self._NS_W}}}val") == "1"
 
     def test_creates_setting_when_no_file(self):
         """settings.xml不存在时，函数创建新文件并写入trackRevisions"""
         with tempfile.TemporaryDirectory() as tmp:
-            word_dir = os.path.join(tmp, 'word')
+            word_dir = os.path.join(tmp, "word")
             os.makedirs(word_dir)
-            settings_path = os.path.join(word_dir, 'settings.xml')
+            settings_path = os.path.join(word_dir, "settings.xml")
 
             # 文件不存在
             assert not os.path.exists(settings_path)
@@ -169,7 +167,7 @@ class TestEnableTrackChangesSetting:
 
             tree = ET.parse(settings_path)
             root = tree.getroot()
-            ns = {'w': self._NS_W}
-            track = root.find('.//w:trackRevisions', ns)
+            ns = {"w": self._NS_W}
+            track = root.find(".//w:trackRevisions", ns)
             assert track is not None
-            assert track.get(f'{{{self._NS_W}}}val') == '1'
+            assert track.get(f"{{{self._NS_W}}}val") == "1"

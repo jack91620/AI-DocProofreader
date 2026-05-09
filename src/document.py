@@ -2,11 +2,9 @@
 文档处理模块
 """
 
-import os
-from typing import List, Dict, Tuple
 from docx import Document
-from docx.shared import RGBColor
 from docx.enum.text import WD_COLOR_INDEX
+
 from document_converter import DocumentConverter
 from logging_config import get_logger
 
@@ -62,23 +60,22 @@ class DocumentProcessor:
 
         for paragraph in self.document.paragraphs:
             if paragraph.text.strip():
-                self.paragraphs.append({
-                    'text': paragraph.text,
-                    'paragraph': paragraph,
-                    'index': len(self.paragraphs)
-                })
+                self.paragraphs.append(
+                    {"text": paragraph.text, "paragraph": paragraph, "index": len(self.paragraphs)}
+                )
                 all_text.append(paragraph.text)
 
-        self.text_content = '\n'.join(all_text)
+        self.text_content = "\n".join(all_text)
 
-    def highlight_text(self, paragraph_index: int, text: str,
-                      color: WD_COLOR_INDEX = WD_COLOR_INDEX.YELLOW):
+    def highlight_text(
+        self, paragraph_index: int, text: str, color: WD_COLOR_INDEX = WD_COLOR_INDEX.YELLOW
+    ):
         """高亮显示文本"""
         try:
             if paragraph_index >= len(self.paragraphs):
                 return False
 
-            paragraph = self.paragraphs[paragraph_index]['paragraph']
+            paragraph = self.paragraphs[paragraph_index]["paragraph"]
 
             # 在段落中查找并高亮文本
             for run in paragraph.runs:
@@ -110,14 +107,14 @@ class DocumentProcessor:
 
         return False
 
-    def get_paragraph_by_text(self, text: str) -> Tuple[int, str]:
+    def get_paragraph_by_text(self, text: str) -> tuple[int, str]:
         """根据文本内容查找段落"""
         for i, para_info in enumerate(self.paragraphs):
-            if text in para_info['text']:
-                return i, para_info['text']
+            if text in para_info["text"]:
+                return i, para_info["text"]
         return -1, ""
 
-    def extract_text_content(self, file_path: str) -> List[str]:
+    def extract_text_content(self, file_path: str) -> list[str]:
         """提取文档文本内容"""
         try:
             document = Document(file_path)
@@ -133,10 +130,10 @@ class DocumentProcessor:
             logger.error(f"提取文档内容失败: {e}")
             return []
 
-    def get_statistics(self) -> Dict:
+    def get_statistics(self) -> dict:
         """获取文档统计信息"""
         return {
             "paragraph_count": len(self.paragraphs),
             "character_count": len(self.text_content),
-            "word_count": len(self.text_content.replace(' ', '')),  # 中文字符数
+            "word_count": len(self.text_content.replace(" ", "")),  # 中文字符数
         }

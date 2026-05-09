@@ -1,10 +1,10 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 """
 视觉修订模块 - 使用删除线和下划线显示修改
 """
 
 from docx.shared import RGBColor
+
 from logging_config import get_logger
 
 logger = get_logger("word_ops.visual_revisions")

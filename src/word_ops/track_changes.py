@@ -1,21 +1,20 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 """
 Word跟踪更改操作模块 - 迁移自word_track_changes.py
 实现Microsoft Word审阅中的修订功能
 """
 
 import os
+import uuid
 import xml.etree.ElementTree as ET
 from datetime import datetime
-import uuid
 
-from docx import Document
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 
-from .docx_packager import modify_docx_package
 from logging_config import get_logger
+
+from .docx_packager import modify_docx_package
 
 logger = get_logger("word_ops.track_changes")
 
@@ -33,7 +32,9 @@ class WordTrackChangesManager:
         # 使用UUID前缀避免标记碰撞
         self._marker_prefix = uuid.uuid4().hex[:8]
 
-    def add_tracked_change(self, paragraph, original_text: str, corrected_text: str, reason: str = ""):
+    def add_tracked_change(
+        self, paragraph, original_text: str, corrected_text: str, reason: str = ""
+    ):
         """添加跟踪更改（真正的Word修订）"""
         try:
             # 生成修订ID
@@ -42,33 +43,37 @@ class WordTrackChangesManager:
             ins_revision_id = self.revision_counter + 1000
 
             # 存储修订数据
-            self.revisions_data.append({
-                'paragraph': paragraph,
-                'original_text': original_text,
-                'corrected_text': corrected_text,
-                'del_id': del_revision_id,
-                'ins_id': ins_revision_id,
-                'author': self.author,
-                'date': self.date,
-                'reason': reason
-            })
+            self.revisions_data.append(
+                {
+                    "paragraph": paragraph,
+                    "original_text": original_text,
+                    "corrected_text": corrected_text,
+                    "del_id": del_revision_id,
+                    "ins_id": ins_revision_id,
+                    "author": self.author,
+                    "date": self.date,
+                    "reason": reason,
+                }
+            )
 
             # 跟踪段落修改，批量处理
             para_id = id(paragraph)
             if para_id not in self.paragraph_changes:
                 self.paragraph_changes[para_id] = {
-                    'paragraph': paragraph,
-                    'original_text': paragraph.text,
-                    'changes': []
+                    "paragraph": paragraph,
+                    "original_text": paragraph.text,
+                    "changes": [],
                 }
 
-            self.paragraph_changes[para_id]['changes'].append({
-                'original_text': original_text,
-                'corrected_text': corrected_text,
-                'del_id': del_revision_id,
-                'ins_id': ins_revision_id,
-                'reason': reason
-            })
+            self.paragraph_changes[para_id]["changes"].append(
+                {
+                    "original_text": original_text,
+                    "corrected_text": corrected_text,
+                    "del_id": del_revision_id,
+                    "ins_id": ins_revision_id,
+                    "reason": reason,
+                }
+            )
 
             logger.info(f"已添加跟踪更改: {original_text} -> {corrected_text}")
             return True
@@ -79,10 +84,10 @@ class WordTrackChangesManager:
 
     def apply_all_changes(self):
         """应用所有跟踪更改到文档"""
-        for para_id, para_data in self.paragraph_changes.items():
-            paragraph = para_data['paragraph']
-            original_full_text = para_data['original_text']
-            changes = para_data['changes']
+        for _para_id, para_data in self.paragraph_changes.items():
+            paragraph = para_data["paragraph"]
+            original_full_text = para_data["original_text"]
+            changes = para_data["changes"]
 
             # 应用所有更改到段落
             self._apply_changes_to_paragraph(paragraph, original_full_text, changes)
@@ -95,7 +100,7 @@ class WordTrackChangesManager:
             processed_positions = set()
 
             for change in changes:
-                original_part = change['original_text']
+                original_part = change["original_text"]
                 start = 0
                 while True:
                     pos = original_text.find(original_part, start)
@@ -124,14 +129,17 @@ class WordTrackChangesManager:
             pfx = self._marker_prefix
 
             for pos, change in changes_with_pos:
-                original_part = change['original_text']
-                corrected_part = change['corrected_text']
-                del_id = change['del_id']
-                ins_id = change['ins_id']
+                original_part = change["original_text"]
+                corrected_part = change["corrected_text"]
+                del_id = change["del_id"]
+                ins_id = change["ins_id"]
 
-                if pos + len(original_part) <= len(current_text) and current_text[pos:pos+len(original_part)] == original_part:
+                if (
+                    pos + len(original_part) <= len(current_text)
+                    and current_text[pos : pos + len(original_part)] == original_part
+                ):
                     before_part = current_text[:pos]
-                    after_part = current_text[pos + len(original_part):]
+                    after_part = current_text[pos + len(original_part) :]
 
                     marker = f"\x00{pfx}DEL:{del_id}:{original_part}\x00\x00{pfx}INS:{ins_id}:{corrected_part}\x00"
                     current_text = before_part + marker + after_part
@@ -212,14 +220,14 @@ class WordTrackChangesManager:
 
     def _create_deletion_element(self, text, revision_id):
         """创建删除元素 (w:del)"""
-        del_element = OxmlElement('w:del')
-        del_element.set(qn('w:id'), str(revision_id))
-        del_element.set(qn('w:author'), self.author)
-        del_element.set(qn('w:date'), self.date)
+        del_element = OxmlElement("w:del")
+        del_element.set(qn("w:id"), str(revision_id))
+        del_element.set(qn("w:author"), self.author)
+        del_element.set(qn("w:date"), self.date)
 
-        del_run = OxmlElement('w:r')
+        del_run = OxmlElement("w:r")
 
-        del_text = OxmlElement('w:delText')
+        del_text = OxmlElement("w:delText")
         del_text.text = text
         del_run.append(del_text)
 
@@ -228,14 +236,14 @@ class WordTrackChangesManager:
 
     def _create_insertion_element(self, text, revision_id):
         """创建插入元素 (w:ins)"""
-        ins_element = OxmlElement('w:ins')
-        ins_element.set(qn('w:id'), str(revision_id))
-        ins_element.set(qn('w:author'), self.author)
-        ins_element.set(qn('w:date'), self.date)
+        ins_element = OxmlElement("w:ins")
+        ins_element.set(qn("w:id"), str(revision_id))
+        ins_element.set(qn("w:author"), self.author)
+        ins_element.set(qn("w:date"), self.date)
 
-        ins_run = OxmlElement('w:r')
+        ins_run = OxmlElement("w:r")
 
-        ins_text = OxmlElement('w:t')
+        ins_text = OxmlElement("w:t")
         ins_text.text = text
         ins_run.append(ins_text)
 
@@ -245,6 +253,7 @@ class WordTrackChangesManager:
 
 def enable_track_changes_in_docx(docx_path, output_path, revisions_data):
     """在Word文档中启用跟踪更改并添加修订"""
+
     def modifier(temp_dir):
         enable_track_changes_setting(temp_dir)
         verify_document_revisions(temp_dir)
@@ -256,26 +265,26 @@ def enable_track_changes_in_docx(docx_path, output_path, revisions_data):
 def enable_track_changes_setting(temp_dir):
     """在settings.xml中启用跟踪更改"""
     try:
-        settings_path = os.path.join(temp_dir, 'word', 'settings.xml')
+        settings_path = os.path.join(temp_dir, "word", "settings.xml")
 
         if os.path.exists(settings_path):
             tree = ET.parse(settings_path)
             root = tree.getroot()
         else:
-            ns_w = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
-            root = ET.Element(f'{{{ns_w}}}settings')
+            ns_w = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+            root = ET.Element(f"{{{ns_w}}}settings")
             tree = ET.ElementTree(root)
 
-        ns = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
+        ns = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
 
-        track_revisions = root.find('.//w:trackRevisions', ns)
+        track_revisions = root.find(".//w:trackRevisions", ns)
 
         if track_revisions is None:
             track_revisions = ET.SubElement(root, f"{{{ns['w']}}}trackRevisions")
 
         track_revisions.set(f"{{{ns['w']}}}val", "1")
 
-        tree.write(settings_path, encoding='utf-8', xml_declaration=True)
+        tree.write(settings_path, encoding="utf-8", xml_declaration=True)
         logger.info("已在settings.xml中启用跟踪更改")
 
     except Exception as e:
@@ -285,17 +294,17 @@ def enable_track_changes_setting(temp_dir):
 def verify_document_revisions(temp_dir):
     """验证document.xml中的修订标记"""
     try:
-        document_path = os.path.join(temp_dir, 'word', 'document.xml')
+        document_path = os.path.join(temp_dir, "word", "document.xml")
 
         if os.path.exists(document_path):
-            with open(document_path, 'r', encoding='utf-8') as f:
+            with open(document_path, encoding="utf-8") as f:
                 content = f.read()
 
-            del_count = content.count('<w:del ')
-            ins_count = content.count('<w:ins ')
-            deltext_count = content.count('<w:delText>')
+            del_count = content.count("<w:del ")
+            ins_count = content.count("<w:ins ")
+            deltext_count = content.count("<w:delText>")
 
-            logger.info(f"document.xml修订标记统计:")
+            logger.info("document.xml修订标记统计:")
             logger.info(f"   - w:del (删除标记): {del_count}")
             logger.info(f"   - w:ins (插入标记): {ins_count}")
             logger.info(f"   - w:delText (删除文本): {deltext_count}")

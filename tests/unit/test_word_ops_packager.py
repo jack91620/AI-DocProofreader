@@ -2,12 +2,9 @@
 
 import os
 import sys
-import tempfile
 import zipfile
 
-import pytest
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
 from word_ops.docx_packager import modify_docx_package
 
@@ -19,7 +16,7 @@ def _create_test_zip(path, files: dict):
         path: zip文件路径
         files: {arcname: content_bytes} 字典
     """
-    with zipfile.ZipFile(path, 'w', zipfile.ZIP_DEFLATED) as zf:
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as zf:
         for arcname, content in files.items():
             zf.writestr(arcname, content)
 
@@ -44,11 +41,11 @@ class TestDocxPackager:
 
         assert result is True
         assert os.path.exists(output_path)
-        with zipfile.ZipFile(output_path, 'r') as zf:
+        with zipfile.ZipFile(output_path, "r") as zf:
             names = set(zf.namelist())
             assert names == set(original_files.keys())
             for arcname, expected_content in original_files.items():
-                assert zf.read(arcname).decode('utf-8') == expected_content
+                assert zf.read(arcname).decode("utf-8") == expected_content
 
     def test_modifier_adds_file(self, tmp_path):
         """Modifier that adds a new file - verify it appears in output."""
@@ -58,18 +55,18 @@ class TestDocxPackager:
 
         def add_file_modifier(temp_dir):
             new_file = os.path.join(temp_dir, "added.txt")
-            with open(new_file, 'w', encoding='utf-8') as f:
+            with open(new_file, "w", encoding="utf-8") as f:
                 f.write("new content")
             return True
 
         result = modify_docx_package(input_path, output_path, add_file_modifier)
 
         assert result is True
-        with zipfile.ZipFile(output_path, 'r') as zf:
+        with zipfile.ZipFile(output_path, "r") as zf:
             names = set(zf.namelist())
             assert "existing.txt" in names
             assert "added.txt" in names
-            assert zf.read("added.txt").decode('utf-8') == "new content"
+            assert zf.read("added.txt").decode("utf-8") == "new content"
 
     def test_modifier_modifies_existing_file(self, tmp_path):
         """Modifier that changes an existing file - verify modification persists."""
@@ -79,15 +76,15 @@ class TestDocxPackager:
 
         def modify_modifier(temp_dir):
             target = os.path.join(temp_dir, "data.txt")
-            with open(target, 'w', encoding='utf-8') as f:
+            with open(target, "w", encoding="utf-8") as f:
                 f.write("after")
             return True
 
         result = modify_docx_package(input_path, output_path, modify_modifier)
 
         assert result is True
-        with zipfile.ZipFile(output_path, 'r') as zf:
-            assert zf.read("data.txt").decode('utf-8') == "after"
+        with zipfile.ZipFile(output_path, "r") as zf:
+            assert zf.read("data.txt").decode("utf-8") == "after"
 
     def test_modifier_returns_false(self, tmp_path):
         """Modifier returning False - function returns False, no output created."""

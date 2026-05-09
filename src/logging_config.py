@@ -19,9 +19,7 @@ def setup_logging(verbose: bool = False):
         handler = logging.StreamHandler(sys.stderr)
         handler.setLevel(level)
 
-        formatter = logging.Formatter(
-            "%(levelname)s | %(name)s | %(message)s"
-        )
+        formatter = logging.Formatter("%(levelname)s | %(name)s | %(message)s")
         handler.setFormatter(formatter)
         logger.addHandler(handler)
 

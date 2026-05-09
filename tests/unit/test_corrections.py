@@ -2,10 +2,9 @@
 
 import os
 import sys
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
 from ai_checker import ProofreadingResult
 from strategies.base import Correction
@@ -13,16 +12,18 @@ from strategies.base import Correction
 
 def _make_proofreader():
     """创建一个不连接真实API的ProofReader实例"""
-    with patch('ai_checker.openai.OpenAI'):
+    with patch("ai_checker.openai.OpenAI"):
         from proofreader import ProofReader
+
         proofreader = ProofReader("test-key")
     return proofreader
 
 
 def _make_base():
     """创建一个不连接真实API的ProofReaderBase实例"""
-    with patch('ai_checker.openai.OpenAI'):
+    with patch("ai_checker.openai.OpenAI"):
         from proofreader_base import ProofReaderBase
+
         base = ProofReaderBase("test-key")
     return base
 
@@ -130,12 +131,14 @@ class TestConvertAiResult:
     def test_converts_issues(self):
         pr = _make_proofreader()
         ai_result = ProofreadingResult()
-        ai_result.issues.append({
-            "type": "拼写错误",
-            "text": "计算器",
-            "suggestion": "建议改为：计算机",
-            "severity": "high",
-        })
+        ai_result.issues.append(
+            {
+                "type": "拼写错误",
+                "text": "计算器",
+                "suggestion": "建议改为：计算机",
+                "severity": "high",
+            }
+        )
 
         text_content = ["这台计算器很好用", "第二段"]
         corrections = pr._convert_ai_result(ai_result, text_content)
@@ -152,11 +155,13 @@ class TestConvertAiResult:
     def test_converts_suggestions(self):
         pr = _make_proofreader()
         ai_result = ProofreadingResult()
-        ai_result.suggestions.append({
-            "original": "程序代码",
-            "suggested": "源代码",
-            "reason": "术语更准确",
-        })
+        ai_result.suggestions.append(
+            {
+                "original": "程序代码",
+                "suggested": "源代码",
+                "reason": "术语更准确",
+            }
+        )
 
         text_content = ["第一段", "这段有程序代码"]
         corrections = pr._convert_ai_result(ai_result, text_content)
@@ -179,11 +184,13 @@ class TestConvertAiResult:
     def test_skips_suggestion_with_empty_original(self):
         pr = _make_proofreader()
         ai_result = ProofreadingResult()
-        ai_result.suggestions.append({
-            "original": "",
-            "suggested": "something",
-            "reason": "reason",
-        })
+        ai_result.suggestions.append(
+            {
+                "original": "",
+                "suggested": "something",
+                "reason": "reason",
+            }
+        )
         corrections = pr._convert_ai_result(ai_result, ["段落一"])
         assert corrections == []
 
@@ -191,13 +198,15 @@ class TestConvertAiResult:
         pr = _make_proofreader()
         ai_result = ProofreadingResult()
         chunk_info = {"start_paragraph": 1, "end_paragraph": 2, "chunk_index": 0}
-        ai_result.issues.append({
-            "type": "语法",
-            "text": "错误文本",
-            "suggestion": "建议改为：正确文本",
-            "severity": "medium",
-            "chunk_info": chunk_info,
-        })
+        ai_result.issues.append(
+            {
+                "type": "语法",
+                "text": "错误文本",
+                "suggestion": "建议改为：正确文本",
+                "severity": "medium",
+                "chunk_info": chunk_info,
+            }
+        )
 
         text_content = ["第零段", "含有错误文本的段落", "第二段"]
         corrections = pr._convert_ai_result(ai_result, text_content)

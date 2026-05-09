@@ -1,12 +1,11 @@
 """AIChecker模块单元测试"""
 
+import json
 import os
 import sys
-import json
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
 from ai_checker import AIChecker, ProofreadingResult
 
@@ -59,7 +58,7 @@ class TestProofreadingResult:
 
 def _make_checker():
     """创建一个不连接真实API的AIChecker实例"""
-    with patch('ai_checker.openai.OpenAI') as mock_openai:
+    with patch("ai_checker.openai.OpenAI") as mock_openai:
         mock_openai.return_value = MagicMock()
         checker = AIChecker("test-api-key")
     return checker
@@ -177,9 +176,7 @@ class TestParseAiResult:
             "issues": [
                 {"type": "语法", "text": "错误文本", "suggestion": "修正", "severity": "high"}
             ],
-            "suggestions": [
-                {"original": "原文", "suggested": "新文", "reason": "更好"}
-            ],
+            "suggestions": [{"original": "原文", "suggested": "新文", "reason": "更好"}],
         }
         result = ProofreadingResult()
         checker._parse_ai_result(ai_result, result)

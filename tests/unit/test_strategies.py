@@ -3,15 +3,15 @@
 import os
 import sys
 import tempfile
-import pytest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
 from docx import Document
-from strategies.base import Correction, OutputStrategy
+
+from strategies.base import Correction
 from strategies.comments import CommentsStrategy
-from strategies.track_changes import TrackChangesStrategy
 from strategies.enhanced import EnhancedStrategy
+from strategies.track_changes import TrackChangesStrategy
 from strategies.visual_revisions import VisualRevisionsStrategy
 
 
@@ -101,7 +101,9 @@ class TestVisualRevisionsStrategy:
                 ),
             ]
             strategy = VisualRevisionsStrategy()
-            result = strategy.apply_corrections(doc, corrections, ["这是一个测试段落", "第二个段落内容"], input_path, output_path)
+            result = strategy.apply_corrections(
+                doc, corrections, ["这是一个测试段落", "第二个段落内容"], input_path, output_path
+            )
             assert result is True
             assert os.path.exists(output_path)
         finally:
@@ -136,7 +138,9 @@ class TestVisualRevisionsStrategy:
                 ),
             ]
             strategy = VisualRevisionsStrategy()
-            result = strategy.apply_corrections(doc, corrections, ["不需要修改的段落"], input_path, output_path)
+            result = strategy.apply_corrections(
+                doc, corrections, ["不需要修改的段落"], input_path, output_path
+            )
             assert result is True
             # Verify the paragraph text is unchanged (no strikethrough/underline applied)
             saved_doc = Document(output_path)
@@ -166,7 +170,9 @@ class TestCommentsStrategy:
                 ),
             ]
             strategy = CommentsStrategy()
-            result = strategy.apply_corrections(doc, corrections, ["计算机科学导论", "本章介绍基本概念"], input_path, output_path)
+            result = strategy.apply_corrections(
+                doc, corrections, ["计算机科学导论", "本章介绍基本概念"], input_path, output_path
+            )
             assert result is True
             assert os.path.exists(output_path)
         finally:
@@ -197,7 +203,9 @@ class TestTrackChangesStrategy:
                 ),
             ]
             strategy = TrackChangesStrategy()
-            result = strategy.apply_corrections(doc, corrections, ["这是原始文本内容", "第二段内容"], input_path, output_path)
+            result = strategy.apply_corrections(
+                doc, corrections, ["这是原始文本内容", "第二段内容"], input_path, output_path
+            )
             assert result is True
             assert os.path.exists(output_path)
         finally:

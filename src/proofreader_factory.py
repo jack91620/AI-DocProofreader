@@ -4,17 +4,16 @@
 
 from strategies import (
     CommentsStrategy,
-    VisualRevisionsStrategy,
-    TrackChangesStrategy,
     EnhancedStrategy,
+    TrackChangesStrategy,
+    VisualRevisionsStrategy,
 )
 
-
 STRATEGY_MAP = {
-    'comments': CommentsStrategy,
-    'revisions': VisualRevisionsStrategy,
-    'track_changes': TrackChangesStrategy,
-    'enhanced': EnhancedStrategy,
+    "comments": CommentsStrategy,
+    "revisions": VisualRevisionsStrategy,
+    "track_changes": TrackChangesStrategy,
+    "enhanced": EnhancedStrategy,
 }
 
 

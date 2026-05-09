@@ -5,9 +5,7 @@ import sys
 import tempfile
 import xml.etree.ElementTree as ET
 
-import pytest
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
 from docx import Document
 
@@ -18,9 +16,9 @@ from word_ops.comments import (
     update_content_types,
 )
 
-NS_W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
-NS_RELS = 'http://schemas.openxmlformats.org/package/2006/relationships'
-NS_CT = 'http://schemas.openxmlformats.org/package/2006/content-types'
+NS_W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+NS_RELS = "http://schemas.openxmlformats.org/package/2006/relationships"
+NS_CT = "http://schemas.openxmlformats.org/package/2006/content-types"
 
 
 class TestWordCommentsManager:
@@ -41,9 +39,9 @@ class TestWordCommentsManager:
         assert result is True
         assert mgr.comment_counter == 1
         assert len(mgr.comments) == 1
-        assert mgr.comments[0]['id'] == 1
-        assert mgr.comments[0]['text'] == "这里有错误"
-        assert mgr.comments[0]['author'] == "AI校对助手"
+        assert mgr.comments[0]["id"] == 1
+        assert mgr.comments[0]["text"] == "这里有错误"
+        assert mgr.comments[0]["author"] == "AI校对助手"
 
     def test_add_comment_increments_counter(self):
         """多次添加批注时计数器正确递增"""
@@ -55,8 +53,8 @@ class TestWordCommentsManager:
 
         assert mgr.comment_counter == 2
         assert len(mgr.comments) == 2
-        assert mgr.comments[0]['id'] == 1
-        assert mgr.comments[1]['id'] == 2
+        assert mgr.comments[0]["id"] == 1
+        assert mgr.comments[1]["id"] == 2
 
     def test_add_comment_text_not_found(self):
         """目标文本不在段落中时返回False"""
@@ -99,14 +97,14 @@ class TestWordCommentsManager:
 
         assert len(data) == 2
 
-        assert data[0]['id'] == 1
-        assert data[0]['text'] == "批注A"
-        assert data[0]['author'] == "TestAuthor"
-        assert 'date' in data[0]
+        assert data[0]["id"] == 1
+        assert data[0]["text"] == "批注A"
+        assert data[0]["author"] == "TestAuthor"
+        assert "date" in data[0]
 
-        assert data[1]['id'] == 2
-        assert data[1]['text'] == "批注B"
-        assert data[1]['author'] == "AI校对助手"
+        assert data[1]["id"] == 2
+        assert data[1]["text"] == "批注B"
+        assert data[1]["author"] == "AI校对助手"
 
     def test_get_comments_for_xml_empty(self):
         """没有批注时返回空列表"""
@@ -124,10 +122,10 @@ class TestCreateCommentsXml:
     def _sample_comments(self, count=1):
         return [
             {
-                'id': i,
-                'text': f'批注内容{i}',
-                'author': 'AI校对助手',
-                'date': '2026-01-01T00:00:00Z',
+                "id": i,
+                "text": f"批注内容{i}",
+                "author": "AI校对助手",
+                "date": "2026-01-01T00:00:00Z",
             }
             for i in range(1, count + 1)
         ]
@@ -135,7 +133,7 @@ class TestCreateCommentsXml:
     def test_creates_valid_xml(self):
         """生成的XML文件存在且包含正确的元素"""
         with tempfile.TemporaryDirectory() as tmp:
-            xml_path = os.path.join(tmp, 'word', 'comments.xml')
+            xml_path = os.path.join(tmp, "word", "comments.xml")
             create_comments_xml(xml_path, self._sample_comments(1))
 
             assert os.path.exists(xml_path)
@@ -144,35 +142,35 @@ class TestCreateCommentsXml:
             root = tree.getroot()
 
             # 根元素应是 w:comments
-            assert root.tag == f'{{{NS_W}}}comments'
+            assert root.tag == f"{{{NS_W}}}comments"
 
             # 应有一个 w:comment 子元素
-            comments = root.findall(f'{{{NS_W}}}comment')
+            comments = root.findall(f"{{{NS_W}}}comment")
             assert len(comments) == 1
 
             comment = comments[0]
-            assert comment.get(f'{{{NS_W}}}id') == '1'
-            assert comment.get(f'{{{NS_W}}}author') == 'AI校对助手'
+            assert comment.get(f"{{{NS_W}}}id") == "1"
+            assert comment.get(f"{{{NS_W}}}author") == "AI校对助手"
 
             # comment下应有 w:p > w:r > w:t 结构
-            t_elem = comment.find(f'{{{NS_W}}}p/{{{NS_W}}}r/{{{NS_W}}}t')
+            t_elem = comment.find(f"{{{NS_W}}}p/{{{NS_W}}}r/{{{NS_W}}}t")
             assert t_elem is not None
-            assert t_elem.text == '批注内容1'
+            assert t_elem.text == "批注内容1"
 
     def test_multiple_comments(self):
         """多个批注时生成多个comment元素"""
         with tempfile.TemporaryDirectory() as tmp:
-            xml_path = os.path.join(tmp, 'word', 'comments.xml')
+            xml_path = os.path.join(tmp, "word", "comments.xml")
             create_comments_xml(xml_path, self._sample_comments(3))
 
             tree = ET.parse(xml_path)
             root = tree.getroot()
 
-            comments = root.findall(f'{{{NS_W}}}comment')
+            comments = root.findall(f"{{{NS_W}}}comment")
             assert len(comments) == 3
 
-            ids = [c.get(f'{{{NS_W}}}id') for c in comments]
-            assert ids == ['1', '2', '3']
+            ids = [c.get(f"{{{NS_W}}}id") for c in comments]
+            assert ids == ["1", "2", "3"]
 
 
 class TestCreateDocumentRels:
@@ -183,7 +181,7 @@ class TestCreateDocumentRels:
         with tempfile.TemporaryDirectory() as tmp:
             create_document_rels(tmp)
 
-            rels_path = os.path.join(tmp, 'word', '_rels', 'document.xml.rels')
+            rels_path = os.path.join(tmp, "word", "_rels", "document.xml.rels")
             assert os.path.exists(rels_path)
 
             tree = ET.parse(rels_path)
@@ -192,27 +190,29 @@ class TestCreateDocumentRels:
             # 查找Relationship元素（不带命名空间前缀，因为注册了默认命名空间）
             all_rels = list(root)
             comment_rels = [
-                r for r in all_rels
-                if r.get('Type') == 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments'
+                r
+                for r in all_rels
+                if r.get("Type")
+                == "http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments"
             ]
             assert len(comment_rels) == 1
-            assert comment_rels[0].get('Target') == 'comments.xml'
+            assert comment_rels[0].get("Target") == "comments.xml"
 
     def test_updates_existing_rels(self):
         """已存在rels文件时添加关系而不重复"""
         with tempfile.TemporaryDirectory() as tmp:
-            rels_dir = os.path.join(tmp, 'word', '_rels')
+            rels_dir = os.path.join(tmp, "word", "_rels")
             os.makedirs(rels_dir, exist_ok=True)
-            rels_path = os.path.join(rels_dir, 'document.xml.rels')
+            rels_path = os.path.join(rels_dir, "document.xml.rels")
 
             # 创建一个已有的rels文件（包含一个样式关系）
             existing_xml = (
                 '<?xml version="1.0" encoding="utf-8"?>'
                 '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
                 '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>'
-                '</Relationships>'
+                "</Relationships>"
             )
-            with open(rels_path, 'w', encoding='utf-8') as f:
+            with open(rels_path, "w", encoding="utf-8") as f:
                 f.write(existing_xml)
 
             create_document_rels(tmp)
@@ -222,15 +222,19 @@ class TestCreateDocumentRels:
 
             all_rels = list(root)
             comment_rels = [
-                r for r in all_rels
-                if r.get('Type') == 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments'
+                r
+                for r in all_rels
+                if r.get("Type")
+                == "http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments"
             ]
             assert len(comment_rels) == 1
 
             # 原有的styles关系应保留
             style_rels = [
-                r for r in all_rels
-                if r.get('Type') == 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles'
+                r
+                for r in all_rels
+                if r.get("Type")
+                == "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles"
             ]
             assert len(style_rels) == 1
 
@@ -240,14 +244,16 @@ class TestCreateDocumentRels:
             create_document_rels(tmp)
             create_document_rels(tmp)
 
-            rels_path = os.path.join(tmp, 'word', '_rels', 'document.xml.rels')
+            rels_path = os.path.join(tmp, "word", "_rels", "document.xml.rels")
             tree = ET.parse(rels_path)
             root = tree.getroot()
 
             all_rels = list(root)
             comment_rels = [
-                r for r in all_rels
-                if r.get('Type') == 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments'
+                r
+                for r in all_rels
+                if r.get("Type")
+                == "http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments"
             ]
             assert len(comment_rels) == 1
 
@@ -260,20 +266,19 @@ class TestUpdateContentTypes:
         with tempfile.TemporaryDirectory() as tmp:
             update_content_types(tmp)
 
-            ct_path = os.path.join(tmp, '[Content_Types].xml')
+            ct_path = os.path.join(tmp, "[Content_Types].xml")
             assert os.path.exists(ct_path)
 
             tree = ET.parse(ct_path)
             root = tree.getroot()
 
             all_children = list(root)
-            overrides = [
-                e for e in all_children
-                if e.get('PartName') == '/word/comments.xml'
-            ]
+            overrides = [e for e in all_children if e.get("PartName") == "/word/comments.xml"]
             assert len(overrides) == 1
-            assert overrides[0].get('ContentType') == \
-                'application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml'
+            assert (
+                overrides[0].get("ContentType")
+                == "application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml"
+            )
 
     def test_no_duplicate(self):
         """调用两次只有一个Override"""
@@ -281,13 +286,10 @@ class TestUpdateContentTypes:
             update_content_types(tmp)
             update_content_types(tmp)
 
-            ct_path = os.path.join(tmp, '[Content_Types].xml')
+            ct_path = os.path.join(tmp, "[Content_Types].xml")
             tree = ET.parse(ct_path)
             root = tree.getroot()
 
             all_children = list(root)
-            overrides = [
-                e for e in all_children
-                if e.get('PartName') == '/word/comments.xml'
-            ]
+            overrides = [e for e in all_children if e.get("PartName") == "/word/comments.xml"]
             assert len(overrides) == 1

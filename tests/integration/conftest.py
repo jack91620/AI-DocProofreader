@@ -1,13 +1,12 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 """
 pytest配置文件
 """
 
-import pytest
-import os
-import tempfile
 import shutil
+import tempfile
+
+import pytest
 
 
 @pytest.fixture
@@ -38,8 +37,8 @@ def mock_api_key():
 def sample_config():
     """提供示例配置的fixture"""
     return {
-        'openai_api_key': 'test_key',
-        'model_name': 'gpt-3.5-turbo',
-        'max_tokens': 2000,
-        'temperature': 0.7
-    } 
+        "openai_api_key": "test_key",
+        "model_name": "gpt-3.5-turbo",
+        "max_tokens": 2000,
+        "temperature": 0.7,
+    }

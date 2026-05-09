@@ -2,11 +2,10 @@
 
 import os
 import sys
-import pytest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
-from text_splitter import TokenCounter, SmartTextSplitter, TextChunk
+from text_splitter import SmartTextSplitter, TokenCounter
 
 
 class TestTokenCounter:
@@ -39,10 +38,10 @@ class TestTokenCounter:
         assert full_tokens > content_tokens
         # Should include system prompt, user template, response format, and overhead
         expected_overhead = (
-            TokenCounter.SYSTEM_PROMPT_TOKENS +
-            TokenCounter.USER_PROMPT_TEMPLATE_TOKENS +
-            TokenCounter.RESPONSE_FORMAT_TOKENS +
-            TokenCounter.API_OVERHEAD_TOKENS
+            TokenCounter.SYSTEM_PROMPT_TOKENS
+            + TokenCounter.USER_PROMPT_TEMPLATE_TOKENS
+            + TokenCounter.RESPONSE_FORMAT_TOKENS
+            + TokenCounter.API_OVERHEAD_TOKENS
         )
         assert full_tokens == content_tokens + expected_overhead
 
