@@ -10,6 +10,13 @@ import openai
 from rich.console import Console
 from rich.progress import Progress
 
+from categories import (
+    GROUP_BY_ID,
+    Category,
+    CategoryGroup,
+    group_categories,
+    resolve_categories,
+)
 from config import Config
 from logging_config import get_logger
 from text_splitter import SmartTextSplitter, TextChunk
@@ -195,23 +202,37 @@ class AIChecker:
         )
         return response.choices[0].message.content
 
-    def check_text(self, text: str) -> ProofreadingResult:
-        """检查文本 - 支持自动分块处理长文档"""
+    def check_text(
+        self,
+        text: str,
+        categories: list[str] | None = None,
+    ) -> ProofreadingResult:
+        """检查文本 - 支持自动分块处理长文档。
+
+        Args:
+            text: 待校对文本。
+            categories: 校对维度 id 列表（见 src/categories.py）。
+                None 表示使用默认（文字层面 + 通用术语，等价于改造前行为）。
+        """
         # 使用改进的token估算
         estimated_tokens = self.text_splitter.token_counter.estimate_full_request_tokens(text)
         safe_limit = self.config.ai.max_tokens
 
         if estimated_tokens <= safe_limit:
             # 文本不长，直接处理
-            return self._check_single_text(text)
+            return self._check_single_text(text, categories=categories)
         # 文本太长，需要分块处理
         self.console.print(
             f"[yellow]⚠️ 文本过长 (估算{estimated_tokens} tokens > {safe_limit} tokens)，启用分块处理[/yellow]"
         )
-        return self._check_text_chunks(text)
+        return self._check_text_chunks(text, categories=categories)
 
-    def check_text_by_paragraphs(self, paragraphs: list[str]) -> ProofreadingResult:
-        """按段落检查文本 - 支持自动分块处理"""
+    def check_text_by_paragraphs(
+        self,
+        paragraphs: list[str],
+        categories: list[str] | None = None,
+    ) -> ProofreadingResult:
+        """按段落检查文本 - 支持自动分块处理。"""
         # 使用改进的token估算
         total_text = "\n".join(paragraphs)
         estimated_tokens = self.text_splitter.token_counter.estimate_full_request_tokens(total_text)
@@ -219,52 +240,56 @@ class AIChecker:
 
         if estimated_tokens <= safe_limit:
             # 文本不长，直接处理
-            return self._check_single_text(total_text)
+            return self._check_single_text(total_text, categories=categories)
         # 文本太长，按段落分块处理
         self.console.print(
             f"[yellow]⚠️ 文档过长 (估算{estimated_tokens} tokens > {safe_limit} tokens)，启用分块处理[/yellow]"
         )
-        return self._check_paragraphs_chunks(paragraphs)
+        return self._check_paragraphs_chunks(paragraphs, categories=categories)
 
-    def _check_single_text(self, text: str) -> ProofreadingResult:
-        """检查单个文本块（原有逻辑）"""
+    def _check_single_text(
+        self,
+        text: str,
+        categories: list[str] | None = None,
+    ) -> ProofreadingResult:
+        """检查单个文本块。每个分类组独立调用一次 LLM。"""
         result = ProofreadingResult()
+        cats = resolve_categories(categories)
 
-        # 1. 基础检查
-        if self.config.rules.check_spelling:
+        if not cats:
+            logger.warning("未选择任何校对维度，跳过 AI 检查")
+            return result
+
+        # 1. 基础检查（仅在选了"文字层面"组的某个维度时跑本地词表查错别字）
+        text_group_selected = any(c.group == "text" for c in cats)
+        if text_group_selected and self.config.rules.check_spelling:
             self._check_spelling(text, result)
 
-        if self.config.rules.check_terminology:
+        # 2. 按分类组分别调用 LLM
+        grouped = group_categories(cats)
+        for group_id, group_cats in grouped.items():
             try:
-                terminology_issues = self._check_terminology(text)
-                if isinstance(terminology_issues, list):
-                    for issue in terminology_issues:
-                        if isinstance(issue, dict):
-                            result.add_issue(
-                                issue_type=issue.get("type", "术语"),
-                                text=issue.get("original", ""),
-                                suggestion=issue.get("suggested", ""),
-                                severity="medium",
-                            )
-                        else:
-                            # 如果issue不是字典，跳过或记录错误
-                            logger.warning(f"术语检查返回了无效格式: {type(issue)}")
+                self._proofread_for_group(text, group_id, group_cats, result)
             except Exception as e:
-                logger.warning(f"术语检查处理失败: {e}")
-
-        # 2. AI深度检查
-        ai_result = self._ai_proofread(text)
-        self._parse_ai_result(ai_result, result)
+                logger.error(f"分类组 {group_id} 检查失败: {e}")
 
         return result
 
-    def _check_text_chunks(self, text: str) -> ProofreadingResult:
+    def _check_text_chunks(
+        self,
+        text: str,
+        categories: list[str] | None = None,
+    ) -> ProofreadingResult:
         """分块检查长文本"""
         # 将文本按行分割为段落
         paragraphs = [line.strip() for line in text.split("\n") if line.strip()]
-        return self._check_paragraphs_chunks(paragraphs)
+        return self._check_paragraphs_chunks(paragraphs, categories=categories)
 
-    def _check_paragraphs_chunks(self, paragraphs: list[str]) -> ProofreadingResult:
+    def _check_paragraphs_chunks(
+        self,
+        paragraphs: list[str],
+        categories: list[str] | None = None,
+    ) -> ProofreadingResult:
         """按段落分块检查文档"""
         # 分割文本
         chunks = self.text_splitter.split_by_paragraphs(paragraphs)
@@ -292,7 +317,7 @@ class AIChecker:
                 )
 
                 # 处理当前块
-                chunk_result = self._check_single_text(chunk.content)
+                chunk_result = self._check_single_text(chunk.content, categories=categories)
 
                 # 合并结果，调整位置信息
                 self._merge_chunk_result(final_result, chunk_result, chunk)
@@ -410,6 +435,117 @@ class AIChecker:
                 return []
 
         return []
+
+    def _proofread_for_group(
+        self,
+        text: str,
+        group_id: str,
+        categories: list[Category],
+        result: ProofreadingResult,
+    ) -> None:
+        """对单个分类组调一次 LLM 检查；issue/suggestion 标 category_id。"""
+        group = GROUP_BY_ID.get(group_id)
+        group_label = group.label if group else group_id
+
+        prompt = self._build_group_prompt(text, group, categories)
+
+        input_tokens = self.text_splitter.token_counter.estimate_full_request_tokens(text)
+        max_completion_tokens = min(2000, max(500, self.config.ai.max_tokens - input_tokens - 500))
+        if max_completion_tokens < 500:
+            logger.warning(f"输入过长 ({input_tokens} tokens)，建议使用分块处理")
+            max_completion_tokens = 500
+
+        # 高风险维度：政治性，给低温降幻觉、降 token、提示标注
+        is_high_risk = any(c.high_risk for c in categories)
+        temperature = 0.0 if is_high_risk else self.config.ai.temperature
+
+        try:
+            result_text = self._call_llm(
+                system_prompt=(
+                    f"你是中文计算机教材校对专家，本轮只负责【{group_label}】维度的检查。"
+                    "请严格按 JSON 返回，不在校对范围之外的问题不要列出。"
+                ),
+                user_prompt=prompt,
+                max_tokens=max_completion_tokens,
+                temperature=temperature,
+            )
+        except Exception as e:
+            logger.error(f"分类组 {group_id} LLM 调用失败: {e}")
+            return
+
+        ai_result = self._parse_json_response(result_text)
+        cat_by_id = {c.id: c for c in categories}
+        default_cat = categories[0]
+
+        for issue in ai_result.get("issues", []):
+            cat_id = issue.get("category") or issue.get("type")
+            cat = cat_by_id.get(cat_id, default_cat)
+            # issue.type 字段对最终用户可见（写入 Word 批注理由），用中文 label
+            result.add_issue(
+                issue_type=cat.label,
+                text=issue.get("text", ""),
+                suggestion=issue.get("suggestion", ""),
+                severity=issue.get("severity", "medium"),
+            )
+
+        for sug in ai_result.get("suggestions", []):
+            result.add_suggestion(
+                text=sug.get("original", ""),
+                suggestion=sug.get("suggested", ""),
+                reason=sug.get("reason", ""),
+            )
+
+    def _build_group_prompt(
+        self,
+        text: str,
+        group: CategoryGroup | None,
+        categories: list[Category],
+    ) -> str:
+        """构造分组 prompt。每条 focus 列在系统提示里，要求 LLM 给出 category 标签。"""
+        focus_block = "\n".join(
+            f"## {cat.label}（category={cat.id}）\n" + "\n".join(f"- {f}" for f in cat.prompt_focus)
+            for cat in categories
+        )
+        cat_ids = " | ".join(f'"{c.id}"' for c in categories)
+        group_label = group.label if group else "校对"
+
+        return f"""\
+你正在以"出版社编辑"的身份，对以下中文计算机教材片段做【{group_label}】维度的专项校对。
+
+# 本轮检查范围
+{focus_block}
+
+# 输出要求
+严格返回如下 JSON（不要任何额外文字、不要 markdown 代码块）：
+
+{{
+  "issues": [
+    {{
+      "category": <{cat_ids}>,
+      "text": "原文中的问题片段（精确截取）",
+      "suggestion": "建议修改后的文本",
+      "severity": "low|medium|high",
+      "reason": "为什么是问题"
+    }}
+  ],
+  "suggestions": [
+    {{
+      "original": "原文",
+      "suggested": "建议修改",
+      "reason": "修改理由"
+    }}
+  ]
+}}
+
+# 工作准则
+- 只关注本轮【{group_label}】范围内的问题，其它维度的问题留给其它轮次。
+- 没问题就返回 {{"issues": [], "suggestions": []}}。
+- 不武断修改。**如不确定请把 severity 设为 low 并在 reason 里说"建议核实"**。
+- "text" 字段必须是从原文中精确截取的字符串，便于在 Word 中定位。
+
+# 待校对文本
+{text}
+"""
 
     def _ai_proofread(self, text: str) -> dict[str, Any]:
         """AI深度校对"""

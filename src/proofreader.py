@@ -20,9 +20,21 @@ class ProofReader(ProofReaderBase):
         self.strategy = strategy
 
     def proofread_document(
-        self, input_file: str, output_file: str = None, mode: str = "comments"
+        self,
+        input_file: str,
+        output_file: str = None,
+        mode: str = "comments",
+        categories: list[str] | None = None,
     ) -> bool:
-        """校对文档并生成输出"""
+        """校对文档并生成输出。
+
+        Args:
+            input_file: 输入 .docx 路径。
+            output_file: 输出路径，缺省按策略后缀生成。
+            mode: 输出策略 (comments / revisions / track_changes / enhanced)。
+            categories: 校对维度 id 列表（见 src/categories.py）。
+                None 表示用默认（文字层面 + 通用术语，等价于改造前行为）。
+        """
         try:
             # 如果没有策略，使用mode参数创建默认策略
             strategy = self.strategy
@@ -50,7 +62,13 @@ class ProofReader(ProofReaderBase):
 
             # 进行AI校对
             self.console.print("[bold]开始AI校对...")
-            ai_result = self.ai_checker.check_text_by_paragraphs(text_content)
+            if categories:
+                self.console.print(
+                    f"[blue]🎯 校对维度: {', '.join(categories)} ({len(categories)}项)[/blue]"
+                )
+            ai_result = self.ai_checker.check_text_by_paragraphs(
+                text_content, categories=categories
+            )
 
             # 转换AI结果为统一的Correction列表
             corrections = self._convert_ai_result(ai_result, text_content)
@@ -107,9 +125,9 @@ class ProofReader(ProofReaderBase):
             self.console.print(f"[red]批量校对失败：{e}[/red]")
             return False
 
-    def quick_check(self, text: str) -> ProofreadingResult:
-        """快速检查文本片段"""
-        return self.ai_checker.check_text(text)
+    def quick_check(self, text: str, categories: list[str] | None = None) -> ProofreadingResult:
+        """快速检查文本片段。"""
+        return self.ai_checker.check_text(text, categories=categories)
 
     def _convert_ai_result(
         self, ai_result: ProofreadingResult, text_content: list
