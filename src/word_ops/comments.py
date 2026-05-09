@@ -96,11 +96,20 @@ class WordCommentsManager:
             self._add_simple_comment_markers(paragraph, comment_id)
 
     def _add_comment_range_start_to_element(self, paragraph_element, comment_id):
-        """直接在段落元素中添加批注范围开始标记"""
+        """直接在段落元素中添加批注范围开始标记。
+
+        OOXML 要求 ``<w:pPr>`` 必须是 ``<w:p>`` 的第一个子元素；
+        ``<w:commentRangeStart>`` 应插在 pPr 之后、内容 run 之前。
+        否则 Word 报"无法读取的内容/恢复此文档"，仅兼容模式能打开。
+        """
         try:
             element = OxmlElement("w:commentRangeStart")
             element.set(qn("w:id"), str(comment_id))
-            paragraph_element.insert(0, element)
+            # 找 pPr，commentRangeStart 必须放它之后
+            insert_at = 0
+            if len(paragraph_element) > 0 and paragraph_element[0].tag == qn("w:pPr"):
+                insert_at = 1
+            paragraph_element.insert(insert_at, element)
         except Exception as e:
             logger.error(f"添加批注范围开始标记到元素失败: {e}")
 
@@ -294,9 +303,7 @@ def update_content_types(temp_dir: str):
 
     # 检查是否已有批注内容类型
     ns = {"c": _NS_CT}
-    comment_overrides = root.findall(
-        ".//c:Override[@PartName='/word/comments.xml']", ns
-    )
+    comment_overrides = root.findall(".//c:Override[@PartName='/word/comments.xml']", ns)
 
     if not comment_overrides:
         override_elem = ET.SubElement(root, f"{{{_NS_CT}}}Override")

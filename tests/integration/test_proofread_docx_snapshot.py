@@ -29,6 +29,7 @@ TESTS_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(TESTS_ROOT))
 
 from utils.docx_diff import normalize_for_snapshot, summarize_docx
+from utils.docx_lint import lint_docx
 
 pytestmark = [pytest.mark.integration, pytest.mark.vcr]
 
@@ -63,6 +64,13 @@ class TestProofreadDocxSnapshot:
         pr = create_proofreader(os.getenv("LICLOUD_TOKEN", "test"), "comments")
         ok = pr.proofread_document(str(in_path), str(out_path))
         assert ok, "校对管线失败"
+
+        # OOXML lint —— 钉死 Word "无法读取的内容/恢复" 的几类已知坑
+        lint_issues = lint_docx(out_path)
+        errors = [i for i in lint_issues if i.severity == "error"]
+        assert not errors, "docx OOXML 不合规（Word 会拒收）:\n" + "\n".join(
+            f"  - {e}" for e in errors
+        )
 
         summary = summarize_docx(out_path)
         # 段落原文应该被保留

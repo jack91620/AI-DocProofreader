@@ -340,8 +340,7 @@ class TestNamespaceCorrectness:
             for child in root:
                 ns = self._ns_of(child)
                 assert ns == self.NS_RELS, (
-                    f"元素 {child.tag} 命名空间为 {ns!r}，应为 {self.NS_RELS}；"
-                    "Word 会拒收"
+                    f"元素 {child.tag} 命名空间为 {ns!r}，应为 {self.NS_RELS}；Word 会拒收"
                 )
 
     def test_override_has_correct_namespace_in_prefixed_root(self):
@@ -364,6 +363,5 @@ class TestNamespaceCorrectness:
             for child in root:
                 ns = self._ns_of(child)
                 assert ns == self.NS_CT, (
-                    f"元素 {child.tag} 命名空间为 {ns!r}，应为 {self.NS_CT}；"
-                    "Word 会拒收"
+                    f"元素 {child.tag} 命名空间为 {ns!r}，应为 {self.NS_CT}；Word 会拒收"
                 )
