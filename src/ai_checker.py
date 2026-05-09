@@ -289,12 +289,14 @@ class AIChecker:
             cat = next((c for c in cats if c.id == hit.category_id), None)
             label = cat.label if cat else hit.category_id
             ref = f"（{hit.standard}）" if hit.standard else ""
+            # 末尾标 [置信度 / rule_id] 便于追溯与调优
+            tail = f" [置信度 {int(hit.confidence * 100)}%·{hit.rule_id}]"
             result.add_issue(
                 issue_type=label,
                 text=hit.text,
                 suggestion=hit.suggestion,
                 severity=hit.severity,
-                reason=f"{hit.reason}{ref}",
+                reason=f"{hit.reason}{ref}{tail}",
             )
             rule_hit_texts.add(hit.text)
         if rule_hits:
