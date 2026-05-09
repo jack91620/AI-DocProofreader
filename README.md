@@ -87,19 +87,42 @@ export OPENAI_API_KEY=your_openai_api_key_here
 
 ## 🚀 快速开始
 
-### 环境准备
+### 环境准备（推荐 uv）
 ```bash
-# 激活conda环境
-conda activate ai-proofreader
+# 安装 uv（一次性）
+brew install uv   # 或 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# 设置API密钥
-export OPENAI_API_KEY=your_api_key_here
+# 一键装齐项目+开发依赖（含可选 anthropic 后端）
+uv sync --extra claude --group dev
+
+# 如需 licloud 私有网关（理想内部用户），先把 wheel 放到本地路径
+# pyproject.toml 中 [tool.uv.sources] 默认指向 ~/Downloads/licloud-*.whl
+uv sync --extra all --group dev
+
+# 设置API密钥（任选其一）
+export LICLOUD_TOKEN=your_token        # 推荐：licloud + Sonnet 4.6
+export OPENAI_API_KEY=your_api_key
+export CLAUDE_SESSION_TOKEN=your_token
 ```
 
 ### 推荐使用（增强模式）
 ```bash
 # 使用增强模式（跟踪更改+批注）- 推荐
-python main.py proofread -i sample_input.docx -o output.docx -m enhanced
+uv run python main.py proofread -i sample_input.docx -o output.docx -m enhanced
+```
+
+### 开发工作流速查
+```bash
+make sync                    # uv sync 所有依赖
+make test                    # 跑全部非 live 测试（cassette回放）
+make test-fast               # 并行单元测试 (-n auto)
+make test-cov                # 含覆盖率报告
+make test-record-cassettes   # 重录 LLM HTTP cassette
+make test-update-snapshots   # 重录 syrupy 快照
+make test-live               # 真实调用 LLM (需要token)
+make lint                    # ruff lint
+make format                  # ruff format + auto-fix
+make all                     # format + lint + type-check + security + test-cov
 ```
 
 ## 📚 详细使用方法

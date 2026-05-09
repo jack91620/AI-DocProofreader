@@ -1,0 +1,35 @@
+# 开发期 git pre-commit 钩子
+# 安装: make git-hooks  (uv run pre-commit install)
+# 跳过一次: git commit --no-verify  (不推荐，CI仍会跑)
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.7.4
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: \.ambr$|\.yaml$|cassettes/
+      - id: end-of-file-fixer
+        exclude: \.ambr$|cassettes/
+      - id: check-yaml
+        exclude: cassettes/   # vcrpy cassettes格式特殊，跳过
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=500]
+      - id: detect-private-key
+
+  # 防止真实 token 被意外提交
+  - repo: local
+    hooks:
+      - id: forbid-real-jwt-token
+        name: 阻止JWT token提交
+        entry: bash -c 'grep -rn "eyJ[A-Za-z0-9_-]\{20,\}\.eyJ" --include="*.py" --include="*.yaml" --include="*.yml" --include="*.json" --include="*.md" --exclude-dir=.venv --exclude-dir=.git . && echo "❌ 发现疑似JWT token，提交被阻止" && exit 1 || exit 0'
+        language: system
+        pass_filenames: false

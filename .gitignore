@@ -86,4 +86,21 @@ enhanced_mode_*.md
 # Backup files
 *.bak
 *.backup
-*_backup.* 
+*_backup.*
+
+# uv / Python tooling
+.python-version
+
+# 测试工具产物（保留 cassette/snapshot 入仓，但其它运行时产物忽略）
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+htmlcov/
+coverage.xml
+junit.xml
+.coverage
+.hypothesis/
+.benchmarks/
+
+# Codex/Claude 工作产物
+output_licloud.docx
