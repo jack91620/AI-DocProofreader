@@ -197,17 +197,11 @@ class EnhancedStrategy(OutputStrategy):
                 enable_track_changes_setting(temp_dir)
                 verify_document_revisions(temp_dir)
 
-                # 2. 创建comments.xml
-                comments_xml_path = os.path.join(temp_dir, "word", "comments.xml")
-                create_comments_xml(comments_xml_path, comments_data)
-
-                # 3. 更新文档关系
+                # 2. 更新文档关系 + 内容类型（先于 comments.xml 写入，保持顺序）
                 create_document_rels(temp_dir)
-
-                # 4. 更新内容类型
                 update_content_types(temp_dir)
 
-                # 5. 添加批注引用到document.xml
+                # 3. 添加批注引用到 document.xml（regex 匹配 <w:del w:id=X>）
                 document_xml_path = os.path.join(temp_dir, "word", "document.xml")
                 with open(document_xml_path, encoding="utf-8") as f:
                     document_content = f.read()
@@ -217,6 +211,22 @@ class EnhancedStrategy(OutputStrategy):
                 )
                 with open(document_xml_path, "w", encoding="utf-8") as f:
                     f.write(updated_document)
+
+                # 4. 扫描 document.xml 中真正被引用的 comment id，
+                #    只把这些 comment 写入 comments.xml；orphan 直接丢弃。
+                #    背景: 修 D3 (revision id 全局唯一) 之后，同 original_text
+                #    多次匹配会复制 change 并分配新 id，导致 comments_data 里的
+                #    id 与 document.xml 里实际 <w:del> 的 id 不再一一对应；
+                #    某些 comment_id 在 document.xml 里找不到对应 <w:del>，
+                #    就成了 orphan。Word 严格模式下 orphan 会触发"无法读取的内容"。
+                referenced_ids = set(
+                    re.findall(r'<w:commentReference\s+w:id="(\d+)"', updated_document)
+                )
+                effective_comments = [
+                    c for c in comments_data if str(c.get("id")) in referenced_ids
+                ]
+                comments_xml_path = os.path.join(temp_dir, "word", "comments.xml")
+                create_comments_xml(comments_xml_path, effective_comments)
 
                 return True
 
