@@ -1,0 +1,41 @@
+# serializer version: 1
+# name: TestProofreadDocxSnapshot.test_comments_mode_pipeline
+  dict({
+    'comments': list([
+      '''
+        程序
+        理由: 拼写错误: 建议改为：程序
+      ''',
+      '''
+        操作系统
+        理由: terminology: 操作系统
+      ''',
+      '''
+        程序
+        理由: terminology: 程序
+      ''',
+      '''
+        操作系统
+        理由: 错别字: 操作系统
+      ''',
+      '''
+        程序
+        理由: 术语不当: 程序
+      ''',
+      '''
+        操作系统是管理计算机硬件和软件资源的程序。
+        理由: 修正错别字"操做"为"操作"，并将港台用语"程式"改为大陆标准术语"程序"
+      ''',
+    ]),
+    'deletions': list([
+    ]),
+    'has_track_changes_setting': False,
+    'insertions': list([
+    ]),
+    'paragraphs': list([
+      '第1章 计算机基础',
+      '操做系统是管理计算机硬件和软件资源的程式。',
+      '常见的操作系统包括Windows、Linux和macOS。',
+    ]),
+  })
+# ---
