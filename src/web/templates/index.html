@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="card">
+  <p class="muted">
+    当前 LLM provider: <strong>{{ provider }}</strong>
+    {% if not has_key %}
+    <br><span class="error">⚠️ 服务端未配置 API 密钥（LICLOUD_TOKEN / CLAUDE_SESSION_TOKEN / OPENAI_API_KEY 任一），上传后会失败。</span>
+    {% endif %}
+  </p>
+
+  <form id="upload-form"
+        hx-post="/jobs"
+        hx-encoding="multipart/form-data"
+        hx-target="#job-area"
+        hx-swap="innerHTML">
+
+    <div class="drop-zone" id="drop-zone" onclick="document.getElementById('file-input').click()">
+      <p style="font-size: 2rem; margin: 0">⬆️</p>
+      <p><strong>拖拽 .docx 到此处</strong> 或点击选择文件</p>
+      <p class="muted" id="file-name">单文件，最大 20 MB</p>
+      <input type="file" name="file" id="file-input" accept=".docx" required>
+    </div>
+
+    <div class="form-row">
+      <label for="mode">校对模式</label>
+      <select name="mode" id="mode">
+        {% for value, label, desc in modes %}
+        <option value="{{ value }}" {% if value == 'comments' %}selected{% endif %}>
+          {{ label }} — {{ desc }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <button type="submit" id="submit-btn" disabled>开始校对</button>
+  </form>
+</div>
+
+<div id="job-area"></div>
+
+<script>
+  const dropZone = document.getElementById('drop-zone');
+  const fileInput = document.getElementById('file-input');
+  const fileName = document.getElementById('file-name');
+  const submitBtn = document.getElementById('submit-btn');
+
+  function updateFileName() {
+    if (fileInput.files.length > 0) {
+      fileName.textContent = `已选择: ${fileInput.files[0].name} (${(fileInput.files[0].size / 1024).toFixed(1)} KB)`;
+      submitBtn.disabled = false;
+    } else {
+      fileName.textContent = '单文件，最大 20 MB';
+      submitBtn.disabled = true;
+    }
+  }
+  fileInput.addEventListener('change', updateFileName);
+
+  ['dragover', 'dragenter'].forEach(ev => {
+    dropZone.addEventListener(ev, e => {
+      e.preventDefault();
+      dropZone.classList.add('dragover');
+    });
+  });
+  ['dragleave', 'drop'].forEach(ev => {
+    dropZone.addEventListener(ev, e => {
+      e.preventDefault();
+      dropZone.classList.remove('dragover');
+    });
+  });
+  dropZone.addEventListener('drop', e => {
+    fileInput.files = e.dataTransfer.files;
+    updateFileName();
+  });
+
+  // 提交后禁用，HTMX 替换 #job-area 的进度区会自行轮询
+  document.getElementById('upload-form').addEventListener('htmx:afterRequest', () => {
+    submitBtn.disabled = true;
+    submitBtn.textContent = '校对中…';
+  });
+</script>
+
+{% endblock %}

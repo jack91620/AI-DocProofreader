@@ -1,0 +1,38 @@
+{# HTMX 进度片段：根据 job.status 决定是继续轮询还是停止。
+   - pending/running: 1.5s 后再请求 /jobs/{id}/status
+   - succeeded:        显示下载按钮
+   - failed:           显示错误信息
+
+   Python 3.11 起 str-enum 的 __str__/__format__ 不再返回值字符串，
+   所以模板里统一用 .value。
+#}
+{% set status = job.status.value %}
+<div class="card"
+     id="job-{{ job.id }}"
+     {% if status in ('pending', 'running') %}
+     hx-get="/jobs/{{ job.id }}/status"
+     hx-trigger="every 1.5s"
+     hx-swap="outerHTML"
+     {% endif %}>
+
+  <p>
+    <strong>{{ job.filename }}</strong>
+    <span class="status-pill status-{{ status }}">{{ status }}</span>
+    <span class="muted">· {{ job.mode }}</span>
+  </p>
+
+  {% if status in ('pending', 'running') %}
+    <div class="progress-bar"><div class="progress-fill" style="width: {{ job.progress }}%"></div></div>
+    <p class="muted">{{ job.message or "等待开始…" }} ({{ job.progress }}%)</p>
+  {% elif status == 'succeeded' %}
+    <div class="progress-bar"><div class="progress-fill" style="width: 100%"></div></div>
+    <p>✅ 校对完成。</p>
+    <a class="btn" href="/jobs/{{ job.id }}/download">⬇️ 下载校对结果</a>
+  {% elif status == 'failed' %}
+    <p class="error">❌ {{ job.error or "校对失败，请检查服务端日志。" }}</p>
+  {% endif %}
+
+  <p class="muted" style="margin-top: 1rem; font-size: 0.8rem">
+    任务 ID: <code>{{ job.id }}</code> · 创建于 {{ job.created_at.strftime("%H:%M:%S") }}
+  </p>
+</div>

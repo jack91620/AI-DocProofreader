@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}AI 校对助手{% endblock %}</title>
+  <script src="https://unpkg.com/htmx.org@2.0.3"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 2rem 1rem;
+      color: #1f2933;
+      background: #f5f7fa;
+    }
+    h1 { margin-top: 0; }
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 1.5rem;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.05);
+      margin-bottom: 1rem;
+    }
+    .drop-zone {
+      border: 2px dashed #b6c2cf;
+      border-radius: 12px;
+      padding: 3rem 1rem;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .drop-zone.dragover {
+      border-color: #4c6ef5;
+      background: #eff6ff;
+    }
+    .drop-zone input[type=file] { display: none; }
+    select, button {
+      font: inherit;
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      border: 1px solid #c0c8d2;
+    }
+    button[type=submit], a.btn {
+      background: #4c6ef5;
+      color: white;
+      border: none;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-block;
+    }
+    button[type=submit]:disabled { opacity: 0.5; cursor: not-allowed; }
+    button[type=submit]:hover, a.btn:hover { background: #3b5bdb; }
+    .progress-bar {
+      height: 10px;
+      background: #e3e8ee;
+      border-radius: 5px;
+      overflow: hidden;
+      margin: 1rem 0;
+    }
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #4c6ef5, #7c3aed);
+      transition: width 0.4s ease;
+    }
+    .status-pill {
+      display: inline-block;
+      padding: 0.2rem 0.6rem;
+      border-radius: 12px;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+    .status-pending  { background: #fef3c7; color: #92400e; }
+    .status-running  { background: #dbeafe; color: #1e40af; }
+    .status-succeeded { background: #d1fae5; color: #065f46; }
+    .status-failed   { background: #fee2e2; color: #991b1b; }
+    .muted { color: #6b7280; font-size: 0.9rem; }
+    .error { color: #b91c1c; background: #fef2f2; padding: 0.75rem 1rem; border-radius: 8px; }
+    .form-row { margin: 1rem 0; }
+    .form-row label { display: block; margin-bottom: 0.4rem; font-weight: 600; }
+  </style>
+  {% block head_extra %}{% endblock %}
+</head>
+<body>
+  <h1>📝 AI 校对助手</h1>
+  {% block content %}{% endblock %}
+  <p class="muted">基于 FastAPI + HTMX + Jinja2。CLI 用法见 <code>main.py --help</code>。</p>
+</body>
+</html>

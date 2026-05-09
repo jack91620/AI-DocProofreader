@@ -371,5 +371,24 @@ def revise(input_file: str, output_file: str):
         console.print(f"[red]错误：{e}[/red]")
 
 
+@cli.command()
+@click.option("--host", default="127.0.0.1", show_default=True, help="监听主机")
+@click.option("--port", default=8000, show_default=True, type=int, help="监听端口")
+@click.option("--reload", is_flag=True, help="开启代码热重载（开发模式）")
+def serve(host: str, port: int, reload: bool):
+    """启动 Web UI（FastAPI + HTMX），浏览器访问 http://HOST:PORT"""
+    try:
+        import uvicorn
+    except ImportError:
+        console.print("[red]❌ 缺少 web 依赖：请先 `uv sync --extra web` 或 `--extra all`[/red]")
+        sys.exit(1)
+
+    api_key = get_api_key()
+    if not api_key:
+        console.print("[yellow]⚠️ 未检测到 API 密钥，Web 页面可访问但上传后会失败。[/yellow]")
+    console.print(f"[blue]🌐 Web UI 启动: http://{host}:{port}[/blue]")
+    uvicorn.run("src.web.app:app", host=host, port=port, reload=reload)
+
+
 if __name__ == "__main__":
     cli()
