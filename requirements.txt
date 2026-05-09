@@ -1,9 +1,15 @@
+# 此文件由 pyproject.toml 派生，仅作 pip 用户的兼容垫片。
+# 推荐用 `uv sync --extra all --group dev` 一键搞定。
+# 重生成: uv export --no-hashes --no-dev > requirements.txt
 python-docx==0.8.11
 openai==1.51.0
 anthropic>=0.40.0
 python-dotenv==1.0.0
-pydantic==2.5.3
+pydantic>=2.7.4
 rich==13.7.0
 click==8.1.7
-# 文档转换支持 (可选，Windows用户安装)
+requests>=2.31.0
+# licloud (理想汽车私有wheel)：本地安装
+# pip install ~/Downloads/licloud-0.2.7a0-py3-none-any.whl
+# Windows 用户额外:
 pywin32; sys_platform == "win32"

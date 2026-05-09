@@ -1,0 +1,216 @@
+[project]
+name = "ai-doc-proofreader"
+version = "1.1.0"
+description = "AI校对助手 - 专业的中文计算机教材校对工具"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "jack91620" }]
+
+dependencies = [
+    "python-docx==0.8.11",
+    "openai==1.51.0",
+    "python-dotenv==1.0.0",
+    "pydantic>=2.7.4",
+    "rich==13.7.0",
+    "click==8.1.7",
+    "requests>=2.31.0",
+]
+
+[project.optional-dependencies]
+# Anthropic直连后端（可选）
+claude = ["anthropic>=0.40.0"]
+# 理想汽车 licloud 内部网关（可选，需Python>=3.10和公司内网/VPN）
+licloud = ["licloud>=0.2.7a0"]
+# Windows .doc转换支持
+windows = ["pywin32; sys_platform == 'win32'"]
+# 全后端
+all = [
+    "anthropic>=0.40.0",
+    "licloud>=0.2.7a0",
+]
+
+[project.scripts]
+ai-proofread = "main:cli"
+
+[dependency-groups]
+# uv 原生 dev group（PEP 735，pip 不识别）
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "pytest-mock>=3.12",
+    "pytest-xdist>=3.5",
+    "pytest-recording>=0.13",
+    "pytest-benchmark>=4.0",
+    "vcrpy>=6.0",
+    "syrupy>=4.6",
+    "hypothesis>=6.100",
+    "dirty-equals>=0.7",
+    "ruff>=0.7",
+    "mypy>=1.10",
+    "pre-commit>=3.7",
+    "bandit>=1.7",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+# ============================================================
+# uv 配置
+# ============================================================
+[tool.uv]
+package = false   # 应用而非库，跳过安装到site-packages
+
+# licloud 是理想汽车私有 wheel，不在 PyPI；
+# 默认指向 ~/Downloads；CI/其他机器可改为 internal index 或本地路径。
+[tool.uv.sources]
+licloud = { path = "/Users/dongxinbo/Downloads/licloud-0.2.7a0-py3-none-any.whl" }
+
+# ============================================================
+# Ruff: 替换 black + isort + flake8 + pylint
+# ============================================================
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests", "."]
+extend-exclude = ["docs", "reports", "scripts", "condaenv.*.requirements.txt"]
+
+[tool.ruff.lint]
+select = [
+    "E", "F",   # pyflakes + pycodestyle
+    "I",        # isort
+    "W",        # pycodestyle warnings
+    "B",        # flake8-bugbear
+    "UP",       # pyupgrade
+    "SIM",      # flake8-simplify
+    "C4",       # flake8-comprehensions
+    "RET",      # flake8-return
+    "PL",       # pylint subset
+    "RUF",      # ruff-specific
+]
+ignore = [
+    "E501",      # line too long（formatter已处理）
+    "E402",      # 模块级import位置（src/__init__.py有sys.path注入）
+    "PLR0913",   # too many args（CLI命令难免）
+    "PLR2004",   # magic numbers
+    "PLR0911",   # too many returns
+    "PLR0912",   # too many branches
+    "PLR0915",   # too many statements
+    "B008",      # function call in default arg（click惯用）
+    "B904",      # raise from（部分场景显式不携带原异常）
+    "SIM108",    # ternary（可读性优先）
+    "PLC0415",   # import inside function（lazy load可选依赖、避免循环依赖）
+    "PLW1510",   # subprocess.run check=True（document_converter故意宽松）
+    "RET504",    # unnecessary assignment before return（可读性优先）
+    "RUF001",    # 中文标点 ambiguous（项目就是中文校对器，必然有）
+    "RUF002",
+    "RUF003",
+    "RUF013",   # implicit Optional（遗留代码，渐进迁移）
+    # TODO: 项目重构后开启
+    # "PTH",     # 用 pathlib 替换 os.path
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["PLR2004", "S101", "PLR0915", "PLC2401", "SIM115"]
+"src/__init__.py" = ["E402", "F401"]   # 该文件有sys.path hack
+"main.py" = ["PLR0915"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["src"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+docstring-code-format = true
+
+# ============================================================
+# Mypy
+# ============================================================
+[tool.mypy]
+python_version = "3.11"
+strict = false   # 渐进收紧
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
+check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+# 第三方未带类型存根的库
+module = [
+    "docx.*",
+    "licloud.*",
+    "openai.*",
+    "anthropic.*",
+    "rich.*",
+    "click.*",
+    "dotenv.*",
+]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+check_untyped_defs = false
+
+# ============================================================
+# Pytest
+# ============================================================
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "."]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-v",
+    "--tb=short",
+    "--strict-markers",
+    "--disable-warnings",
+    "-ra",
+]
+markers = [
+    "unit: 单元测试",
+    "integration: 集成测试",
+    "slow: 慢速测试",
+    "api: 需要API key的测试",
+    "live: 需要真实LLM调用，默认跳过；--run-live启用",
+    "benchmark: 性能基准测试",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning:docx.*",
+    "ignore::DeprecationWarning:pkg_resources.*",
+]
+
+# ============================================================
+# Coverage
+# ============================================================
+[tool.coverage.run]
+source = ["src"]
+branch = true
+omit = [
+    "tests/*",
+    "scripts/*",
+    "src/__init__.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
+show_missing = true
+skip_covered = false
+fail_under = 70
+
+# ============================================================
+# Bandit（安全扫描）
+# ============================================================
+[tool.bandit]
+skips = ["B101", "B404", "B603"]   # assert/subprocess在测试和文档转换中合法
+exclude_dirs = ["tests", "scripts", "docs"]

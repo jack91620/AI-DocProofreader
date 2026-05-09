@@ -1,17 +1,14 @@
-name: ai-proofreader
+# DEPRECATED — 项目已迁移至 uv + pyproject.toml。
+# 请改用：
+#   brew install uv   # 或 curl -LsSf https://astral.sh/uv/install.sh | sh
+#   uv sync --extra all --group dev
+#
+# 此文件保留用于旧 conda 用户做参考，不再维护。
+name: ai-proofreader-deprecated
 channels:
   - conda-forge
-  - defaults
 dependencies:
-  - python=3.9
+  - python=3.11
   - pip
   - pip:
-    - python-docx==0.8.11
-    - openai==1.51.0
-    - python-dotenv==1.0.0
-    - jieba==0.42.1
-    - pypinyin==0.50.0
-    - requests==2.31.0
-    - pydantic==2.5.3
-    - rich==13.7.0
-    - click==8.1.7 
+      - -e .[all]
