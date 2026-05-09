@@ -1,0 +1,64 @@
+# serializer version: 1
+# name: TestCleanAiResponse.test_strips_chatty_preamble
+  '{"issues": [{"type": "错别字"}]}'
+# ---
+# name: TestCleanAiResponse.test_strips_markdown_fence
+  '''
+  {"issues": []}
+  
+  '''
+# ---
+# name: TestParseJsonResponse.test_empty_string_returns_empty_shape
+  dict({
+    'issues': list([
+    ]),
+    'suggestions': list([
+    ]),
+  })
+# ---
+# name: TestParseJsonResponse.test_missing_comma_between_objects
+  dict({
+    'issues': list([
+      dict({
+        'type': 'A',
+      }),
+      dict({
+        'type': 'B',
+      }),
+    ]),
+    'suggestions': list([
+    ]),
+  })
+# ---
+# name: TestParseJsonResponse.test_smart_quotes_replaced
+  dict({
+    'issues': list([
+      dict({
+        'text': '操做',
+        'type': '错别字',
+      }),
+    ]),
+    'suggestions': list([
+    ]),
+  })
+# ---
+# name: TestParseJsonResponse.test_unparseable_falls_back_to_text
+  dict({
+    'issues': list([
+    ]),
+    'suggestions': list([
+    ]),
+  })
+# ---
+# name: TestParseJsonResponse.test_well_formed_json
+  dict({
+    'issues': list([
+      dict({
+        'text': '操做',
+        'type': '错别字',
+      }),
+    ]),
+    'suggestions': list([
+    ]),
+  })
+# ---
