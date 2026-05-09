@@ -8,14 +8,6 @@
   
   '''
 # ---
-# name: TestParseJsonResponse.test_empty_string_returns_empty_shape
-  dict({
-    'issues': list([
-    ]),
-    'suggestions': list([
-    ]),
-  })
-# ---
 # name: TestParseJsonResponse.test_missing_comma_between_objects
   dict({
     'issues': list([
@@ -42,7 +34,7 @@
     ]),
   })
 # ---
-# name: TestParseJsonResponse.test_unparseable_falls_back_to_text
+# name: TestParseJsonResponse.test_unparseable_no_json_returns_empty
   dict({
     'issues': list([
     ]),
@@ -57,6 +49,14 @@
         'text': '操做',
         'type': '错别字',
       }),
+    ]),
+    'suggestions': list([
+    ]),
+  })
+# ---
+# name: TestSmartTextFallback.test_empty_string_returns_empty_shape
+  dict({
+    'issues': list([
     ]),
     'suggestions': list([
     ]),

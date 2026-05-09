@@ -772,8 +772,9 @@ class AIChecker:
                 if not line:
                     continue
 
-                # 查找 "原文 -> 修改" 模式
-                arrow_match = re.search(r"(.+?)\s*[→->]\s*(.+)", line)
+                # 查找 "原文 -> 修改" 或 "原文 → 修改" 模式
+                # 注意：用 alternation 而非字符类，否则 [→-] 会被当成 unicode 范围
+                arrow_match = re.search(r"(.+?)\s*(?:→|->)\s*(.+)", line)
                 if arrow_match:
                     original = arrow_match.group(1).strip()
                     suggested = arrow_match.group(2).strip()
@@ -811,7 +812,9 @@ class AIChecker:
             # 如果没有找到结构化信息，尝试提取关键词
             if not suggestions and not issues:
                 # 查找可能的术语或修改建议
-                potential_corrections = re.findall(r"([^\s]+)\s*[→->]\s*([^\s]+)", response_text)
+                potential_corrections = re.findall(
+                    r"(\S+)\s*(?:→|->)\s*(\S+)", response_text
+                )
                 for orig, sugg in potential_corrections:
                     if orig != sugg and len(orig) > 1 and len(sugg) > 1:
                         suggestions.append(

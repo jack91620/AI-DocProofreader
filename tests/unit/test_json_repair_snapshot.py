@@ -58,16 +58,46 @@ class TestParseJsonResponse:
         raw = '{"issues": [{"type": "错别字", "text": "操做"}], "suggestions": []}'
         assert parser._parse_json_response(raw) == snapshot
 
-    def test_unparseable_falls_back_to_text(self, parser, snapshot):
-        # 完全不是JSON，应走文本fallback并返回dict形状
-        raw = "原文：操做系统 → 操作系统"
-        result = parser._parse_json_response(raw)
-        # 形状要稳：dict with issues/suggestions keys
-        assert set(result.keys()) >= {"issues", "suggestions"}
-        assert isinstance(result["issues"], list)
-        assert isinstance(result["suggestions"], list)
-        # 整体输出快照
+    def test_unparseable_no_json_returns_empty(self, parser, snapshot):
+        """没 { } 的纯文本：不进 fallback，直接返回空形状。"""
+        result = parser._parse_json_response("原文：操做系统 → 操作系统")
         assert result == snapshot
+
+
+class TestSmartTextFallback:
+    """``_parse_text_fallback_smart`` 是 JSON 修复全失败后的兜底解析。
+
+    历史 bug: 内部用了字符类 ``[→->]``，Python 把 → (U+2192) 与 - (U+2D)
+    解析为字符范围导致 ``re.error: bad character range →->``。修复后用
+    alternation ``(?:→|->)``。
+    """
+
+    def test_unicode_arrow(self, parser):
+        out = parser._parse_text_fallback_smart("操做系统 → 操作系统")
+        joined = "".join(
+            s.get("original", "") + s.get("suggested", "") for s in out["suggestions"]
+        )
+        assert "操做系统" in joined and "操作系统" in joined
+
+    def test_ascii_arrow(self, parser):
+        out = parser._parse_text_fallback_smart("操做系统 -> 操作系统")
+        joined = "".join(
+            s.get("original", "") + s.get("suggested", "") for s in out["suggestions"]
+        )
+        assert "操做系统" in joined and "操作系统" in joined
+
+    def test_does_not_raise_on_arrow_chars(self, parser):
+        """直接钉死回归：含箭头的输入不能再抛 re.error。"""
+        # 多种实际可能出现的 LLM 输出片段
+        for text in [
+            "原文：操做系统 → 操作系统",
+            "应改为：x -> y",
+            "建议: A → B; C -> D",
+        ]:
+            # 不应抛异常
+            out = parser._parse_text_fallback_smart(text)
+            assert isinstance(out, dict)
+            assert "issues" in out and "suggestions" in out
 
     def test_empty_string_returns_empty_shape(self, parser, snapshot):
         assert parser._parse_json_response("") == snapshot
