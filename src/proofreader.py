@@ -142,6 +142,7 @@ class ProofReader(ProofReaderBase):
             issue_type = issue.get("type", "其他问题")
             severity = issue.get("severity", "medium")
             chunk_info = issue.get("chunk_info", None)
+            issue_reason = issue.get("reason", "")
 
             corrected_text = self._extract_corrected_text(suggestion)
             if not corrected_text:
@@ -149,12 +150,18 @@ class ProofReader(ProofReaderBase):
 
             paragraph_index = self._find_text_in_paragraphs(problem_text, text_content, chunk_info)
 
+            # 规则引擎会带 reason 字段（含 GB 标准依据），优先用；
+            # LLM 路径没有 reason，退回 "type: suggestion" 这种简短形式。
+            display_reason = (
+                f"{issue_type}：{issue_reason}" if issue_reason else f"{issue_type}: {suggestion}"
+            )
+
             corrections.append(
                 Correction(
                     paragraph_index=paragraph_index,
                     original_text=problem_text,
                     corrected_text=corrected_text,
-                    reason=f"{issue_type}: {suggestion}",
+                    reason=display_reason,
                     correction_type="issue",
                     severity=severity,
                     chunk_info=chunk_info,

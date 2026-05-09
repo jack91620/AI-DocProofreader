@@ -51,17 +51,23 @@ class ProofreadingResult:
         suggestion: str,
         severity: str = "medium",
         position: int | None = None,
+        reason: str = "",
     ):
-        """添加校对问题"""
-        self.issues.append(
-            {
-                "type": issue_type,
-                "text": text,
-                "suggestion": suggestion,
-                "severity": severity,
-                "position": position,
-            }
-        )
+        """添加校对问题。
+
+        reason 是详细原因/标准依据（如 "中文上下文应用全角（GB/T 15834-2011）"），
+        会出现在 Word 批注里。
+        """
+        entry = {
+            "type": issue_type,
+            "text": text,
+            "suggestion": suggestion,
+            "severity": severity,
+            "position": position,
+        }
+        if reason:
+            entry["reason"] = reason
+        self.issues.append(entry)
 
     def add_suggestion(self, text: str, suggestion: str, reason: str):
         """添加改进建议"""
@@ -97,6 +103,12 @@ class AIChecker:
             max_tokens=self.config.ai.max_tokens, overlap_tokens=self.config.ai.chunk_overlap_tokens
         )
         self.console = Console()
+
+        # 规则引擎（路径B：规则优先 + LLM 兜底）
+        # 延迟 import 避免循环依赖
+        from rules.base import build_default_engine
+
+        self.rule_engine = build_default_engine()
 
     def _init_openai_client(self):
         """初始化OpenAI客户端"""
@@ -252,7 +264,11 @@ class AIChecker:
         text: str,
         categories: list[str] | None = None,
     ) -> ProofreadingResult:
-        """检查单个文本块。每个分类组独立调用一次 LLM。"""
+        """检查单个文本块。
+
+        路径B: 先跑规则引擎（确定性高），再按分类组跑 LLM（兜底语义层）。
+        规则命中片段会传给 LLM prompt，提示其不要重复报相同问题。
+        """
         result = ProofreadingResult()
         cats = resolve_categories(categories)
 
@@ -265,11 +281,32 @@ class AIChecker:
         if text_group_selected and self.config.rules.check_spelling:
             self._check_spelling(text, result)
 
-        # 2. 按分类组分别调用 LLM
+        # 2. 规则引擎先扫一遍（确定性高、可解释、零 token 成本）
+        cat_ids = {c.id for c in cats}
+        rule_hits = self.rule_engine.scan(text, category_ids=cat_ids)
+        rule_hit_texts: set[str] = set()
+        for hit in rule_hits:
+            cat = next((c for c in cats if c.id == hit.category_id), None)
+            label = cat.label if cat else hit.category_id
+            ref = f"（{hit.standard}）" if hit.standard else ""
+            result.add_issue(
+                issue_type=label,
+                text=hit.text,
+                suggestion=hit.suggestion,
+                severity=hit.severity,
+                reason=f"{hit.reason}{ref}",
+            )
+            rule_hit_texts.add(hit.text)
+        if rule_hits:
+            self.console.print(f"[blue]🔧 规则引擎命中 {len(rule_hits)} 处[/blue]")
+
+        # 3. 按分类组分别调用 LLM，告知规则已覆盖的片段，让 LLM 关注其它
         grouped = group_categories(cats)
         for group_id, group_cats in grouped.items():
             try:
-                self._proofread_for_group(text, group_id, group_cats, result)
+                self._proofread_for_group(
+                    text, group_id, group_cats, result, skip_texts=rule_hit_texts
+                )
             except Exception as e:
                 logger.error(f"分类组 {group_id} 检查失败: {e}")
 
@@ -442,12 +479,16 @@ class AIChecker:
         group_id: str,
         categories: list[Category],
         result: ProofreadingResult,
+        skip_texts: set[str] | None = None,
     ) -> None:
-        """对单个分类组调一次 LLM 检查；issue/suggestion 标 category_id。"""
+        """对单个分类组调一次 LLM 检查；issue/suggestion 标 category_id。
+
+        skip_texts: 已被规则引擎覆盖的片段，写入 prompt 让 LLM 不要重复报。
+        """
         group = GROUP_BY_ID.get(group_id)
         group_label = group.label if group else group_id
 
-        prompt = self._build_group_prompt(text, group, categories)
+        prompt = self._build_group_prompt(text, group, categories, skip_texts=skip_texts)
 
         input_tokens = self.text_splitter.token_counter.estimate_full_request_tokens(text)
         max_completion_tokens = min(2000, max(500, self.config.ai.max_tokens - input_tokens - 500))
@@ -500,8 +541,12 @@ class AIChecker:
         text: str,
         group: CategoryGroup | None,
         categories: list[Category],
+        skip_texts: set[str] | None = None,
     ) -> str:
-        """构造分组 prompt。每条 focus 列在系统提示里，要求 LLM 给出 category 标签。"""
+        """构造分组 prompt。每条 focus 列在系统提示里，要求 LLM 给出 category 标签。
+
+        skip_texts: 规则引擎已覆盖的片段，提示 LLM 不要重复。
+        """
         focus_block = "\n".join(
             f"## {cat.label}（category={cat.id}）\n" + "\n".join(f"- {f}" for f in cat.prompt_focus)
             for cat in categories
@@ -509,11 +554,19 @@ class AIChecker:
         cat_ids = " | ".join(f'"{c.id}"' for c in categories)
         group_label = group.label if group else "校对"
 
+        skip_section = ""
+        if skip_texts:
+            skip_lines = "\n".join(f"- {t!r}" for t in sorted(skip_texts)[:30])
+            skip_section = (
+                "\n# 规则引擎已覆盖（无需重复报告，请关注其它语义层问题）\n" + skip_lines + "\n"
+            )
+
         return f"""\
 你正在以"出版社编辑"的身份，对以下中文计算机教材片段做【{group_label}】维度的专项校对。
 
 # 本轮检查范围
 {focus_block}
+{skip_section}
 
 # 输出要求
 严格返回如下 JSON（不要任何额外文字、不要 markdown 代码块）：
@@ -812,9 +865,7 @@ class AIChecker:
             # 如果没有找到结构化信息，尝试提取关键词
             if not suggestions and not issues:
                 # 查找可能的术语或修改建议
-                potential_corrections = re.findall(
-                    r"(\S+)\s*(?:→|->)\s*(\S+)", response_text
-                )
+                potential_corrections = re.findall(r"(\S+)\s*(?:→|->)\s*(\S+)", response_text)
                 for orig, sugg in potential_corrections:
                     if orig != sugg and len(orig) > 1 and len(sugg) > 1:
                         suggestions.append(

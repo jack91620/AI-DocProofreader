@@ -74,16 +74,12 @@ class TestSmartTextFallback:
 
     def test_unicode_arrow(self, parser):
         out = parser._parse_text_fallback_smart("操做系统 → 操作系统")
-        joined = "".join(
-            s.get("original", "") + s.get("suggested", "") for s in out["suggestions"]
-        )
+        joined = "".join(s.get("original", "") + s.get("suggested", "") for s in out["suggestions"])
         assert "操做系统" in joined and "操作系统" in joined
 
     def test_ascii_arrow(self, parser):
         out = parser._parse_text_fallback_smart("操做系统 -> 操作系统")
-        joined = "".join(
-            s.get("original", "") + s.get("suggested", "") for s in out["suggestions"]
-        )
+        joined = "".join(s.get("original", "") + s.get("suggested", "") for s in out["suggestions"])
         assert "操做系统" in joined and "操作系统" in joined
 
     def test_does_not_raise_on_arrow_chars(self, parser):
