@@ -230,8 +230,17 @@ def create_comments_xml(comments_xml_path: str, comments_data: list):
     logger.info(f"批注XML文件已创建: {comments_xml_path}")
 
 
+_NS_RELS = "http://schemas.openxmlformats.org/package/2006/relationships"
+_NS_CT = "http://schemas.openxmlformats.org/package/2006/content-types"
+
+
 def create_document_rels(temp_dir: str):
-    """创建或更新document.xml.rels文件"""
+    """创建或更新document.xml.rels文件，注册批注关系。
+
+    注意：新增 element 必须带命名空间前缀 ``{ns}Tag`` (Clark 表示法)，
+    否则被序列化为无命名空间元素，Word 严格 schema 校验会拒收，
+    触发"无法读取的内容/恢复此文档"提示。
+    """
     rels_dir = os.path.join(temp_dir, "word", "_rels")
     os.makedirs(rels_dir, exist_ok=True)
 
@@ -243,21 +252,20 @@ def create_document_rels(temp_dir: str):
         root = tree.getroot()
     else:
         # 创建新的关系文件
-        ns_rels = "http://schemas.openxmlformats.org/package/2006/relationships"
-        ET.register_namespace("", ns_rels)
-        root = ET.Element(f"{{{ns_rels}}}Relationships")
+        ET.register_namespace("", _NS_RELS)
+        root = ET.Element(f"{{{_NS_RELS}}}Relationships")
         tree = ET.ElementTree(root)
 
-    # 检查是否已有批注关系
-    ns = {"": "http://schemas.openxmlformats.org/package/2006/relationships"}
+    # 检查是否已有批注关系（findall 要带命名空间）
+    ns = {"r": _NS_RELS}
     comment_rels = root.findall(
-        ".//Relationship[@Type='http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments']",
+        ".//r:Relationship[@Type='http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments']",
         ns,
     )
 
     if not comment_rels:
-        # 添加批注关系
-        rel_elem = ET.SubElement(root, "Relationship")
+        # 必须用 Clark 表示法 {ns}Tag，否则序列化出来不带命名空间，Word 不认
+        rel_elem = ET.SubElement(root, f"{{{_NS_RELS}}}Relationship")
         rel_elem.set("Id", "rId999")
         rel_elem.set(
             "Type", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments"
@@ -269,7 +277,10 @@ def create_document_rels(temp_dir: str):
 
 
 def update_content_types(temp_dir: str):
-    """更新[Content_Types].xml文件以包含批注内容类型"""
+    """更新[Content_Types].xml文件以包含批注内容类型。
+
+    与 create_document_rels 同样的命名空间陷阱：必须用 Clark 表示法。
+    """
     content_types_path = os.path.join(temp_dir, "[Content_Types].xml")
 
     if os.path.exists(content_types_path):
@@ -277,18 +288,18 @@ def update_content_types(temp_dir: str):
         root = tree.getroot()
     else:
         # 创建新的内容类型文件
-        ns_ct = "http://schemas.openxmlformats.org/package/2006/content-types"
-        ET.register_namespace("", ns_ct)
-        root = ET.Element(f"{{{ns_ct}}}Types")
+        ET.register_namespace("", _NS_CT)
+        root = ET.Element(f"{{{_NS_CT}}}Types")
         tree = ET.ElementTree(root)
 
     # 检查是否已有批注内容类型
-    ns = {"": "http://schemas.openxmlformats.org/package/2006/content-types"}
-    comment_overrides = root.findall(".//Override[@PartName='/word/comments.xml']", ns)
+    ns = {"c": _NS_CT}
+    comment_overrides = root.findall(
+        ".//c:Override[@PartName='/word/comments.xml']", ns
+    )
 
     if not comment_overrides:
-        # 添加批注内容类型
-        override_elem = ET.SubElement(root, "Override")
+        override_elem = ET.SubElement(root, f"{{{_NS_CT}}}Override")
         override_elem.set("PartName", "/word/comments.xml")
         override_elem.set(
             "ContentType",

@@ -293,3 +293,77 @@ class TestUpdateContentTypes:
             all_children = list(root)
             overrides = [e for e in all_children if e.get("PartName") == "/word/comments.xml"]
             assert len(overrides) == 1
+
+
+class TestNamespaceCorrectness:
+    """钉死回归: Override / Relationship 必须与父节点同命名空间，
+    否则 Word 报"无法读取的内容/恢复此文档"。
+
+    历史 bug: ``ET.SubElement(root, "Override")`` 创建无命名空间元素。
+    当父节点是 ``<ns0:Types xmlns:ns0="...">`` 这种**前缀绑定**形式时，
+    序列化出的 ``<Override>`` 子元素会被解析为"空命名空间"，与父节点
+    的 ns0 不同 — Word 拒收。
+    """
+
+    NS_RELS = "http://schemas.openxmlformats.org/package/2006/relationships"
+    NS_CT = "http://schemas.openxmlformats.org/package/2006/content-types"
+
+    @staticmethod
+    def _ns_of(elem) -> str:
+        """从 Clark 表示法 ``{ns}tag`` 提取命名空间，无则返回空串。"""
+        tag = elem.tag
+        if isinstance(tag, str) and tag.startswith("{"):
+            return tag[1 : tag.index("}")]
+        return ""
+
+    def test_relationship_has_correct_namespace_in_prefixed_root(self):
+        """复现历史 bug 现场: 父节点用 ``xmlns:ns0=`` 前缀绑定。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            rels_dir = os.path.join(tmp, "word", "_rels")
+            os.makedirs(rels_dir, exist_ok=True)
+            rels_path = os.path.join(rels_dir, "document.xml.rels")
+
+            # 关键: 用前缀绑定（不是默认 xmlns）—— 还原真实生产环境
+            existing = (
+                '<?xml version="1.0" encoding="utf-8"?>'
+                f'<ns0:Relationships xmlns:ns0="{self.NS_RELS}">'
+                '<ns0:Relationship Id="rId1" Type="x" Target="styles.xml"/>'
+                "</ns0:Relationships>"
+            )
+            with open(rels_path, "w", encoding="utf-8") as f:
+                f.write(existing)
+
+            create_document_rels(tmp)
+
+            root = ET.parse(rels_path).getroot()
+            assert root.tag == f"{{{self.NS_RELS}}}Relationships"
+            for child in root:
+                ns = self._ns_of(child)
+                assert ns == self.NS_RELS, (
+                    f"元素 {child.tag} 命名空间为 {ns!r}，应为 {self.NS_RELS}；"
+                    "Word 会拒收"
+                )
+
+    def test_override_has_correct_namespace_in_prefixed_root(self):
+        """复现历史 bug 现场: Content_Types 父节点前缀绑定。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            ct_path = os.path.join(tmp, "[Content_Types].xml")
+            existing = (
+                '<?xml version="1.0" encoding="utf-8"?>'
+                f'<ns0:Types xmlns:ns0="{self.NS_CT}">'
+                '<ns0:Default Extension="xml" ContentType="application/xml"/>'
+                "</ns0:Types>"
+            )
+            with open(ct_path, "w", encoding="utf-8") as f:
+                f.write(existing)
+
+            update_content_types(tmp)
+
+            root = ET.parse(ct_path).getroot()
+            assert root.tag == f"{{{self.NS_CT}}}Types"
+            for child in root:
+                ns = self._ns_of(child)
+                assert ns == self.NS_CT, (
+                    f"元素 {child.tag} 命名空间为 {ns!r}，应为 {self.NS_CT}；"
+                    "Word 会拒收"
+                )
