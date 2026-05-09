@@ -1,0 +1,60 @@
+interactions:
+- request:
+    body: "{\"messages\":[{\"role\":\"system\",\"content\":\"\u4F60\u662F\u4E2D\u6587\u6821\u5BF9\u52A9\u624B\uFF0C\u76F4\u63A5\u56DE\u7B54\u3002\"},{\"role\":\"user\",\"content\":\"\u8BF7\u786E\u8BA4\u8FD9\u53E5\u8BDD\u662F\u5426\u9700\u8981\u4FEE\u6539\uFF1A\u4ECA\u5929\u5929\u6C14\u771F\u597D\u3002\"}],\"model\":\"aws-claude-sonnet-4-6\",\"max_tokens\":100,\"temperature\":0.1}"
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate, zstd
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '243'
+      Content-Type:
+      - application/json
+      Host:
+      - api-hub.inner.chj.cloud
+      User-Agent:
+      - LiOpenAI/Python 1.52.0
+      X-Stainless-Arch:
+      - arm64
+      X-Stainless-Lang:
+      - python
+      X-Stainless-OS:
+      - MacOS
+      X-Stainless-Package-Version:
+      - 1.52.0
+      X-Stainless-Runtime:
+      - CPython
+      X-Stainless-Runtime-Version:
+      - 3.11.15
+      bcs-apihub-requestid:
+      - REDACTED
+      x-chj-gw-source:
+      - REDACTED
+      x-chj-gwtoken:
+      - REDACTED
+      x-stainless-read-timeout:
+      - '600.0'
+      x-stainless-retry-count:
+      - '0'
+    method: POST
+    uri: http://api-hub.inner.chj.cloud/llm-gateway/v1/chat/completions/aws-claude-sonnet-4-6
+  response:
+    body:
+      string: "{\"model\":\"claude-sonnet-4-6\",\"id\":\"msg_bdrk_011wAGDR6Qb3eGV44CjvbEAM\",\"choices\":[{\"message\":{\"content\":\"\u8FD9\u53E5\u8BDD\u8868\u8FBE\u6E05\u6670\uFF0C\u8BED\u6CD5\u6B63\u786E\uFF0C\u65E0\u9700\u4FEE\u6539\u3002\u2713\",\"reasoning_content\":[],\"role\":\"assistant\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":43,\"total_tokens\":68,\"completion_tokens\":25,\"plugin_use_counts\":{},\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0}}}"
+    headers:
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json;charset=UTF-8
+      Date:
+      - Sat, 09 May 2026 02:33:05 GMT
+      Keep-Alive:
+      - timeout=60
+      Transfer-Encoding:
+      - chunked
+    status:
+      code: 200
+      message: OK
+version: 1

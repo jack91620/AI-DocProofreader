@@ -1,0 +1,148 @@
+interactions:
+- request:
+    body: "{\"messages\":[{\"role\":\"system\",\"content\":\"\u4F60\u662F\u672F\u8BED\u68C0\u67E5\u4E13\u5BB6\uFF0C\u68C0\u67E5\u6280\u672F\u6587\u6863\u672F\u8BED\u4E00\u81F4\u6027\u3002\"},{\"role\":\"user\",\"content\":\"\u68C0\u67E5\u4EE5\u4E0B\u6587\u672C\u7684\u672F\u8BED\u4E00\u81F4\u6027\u95EE\u9898\uFF1A\\n\\n\u6587\u672C\uFF1A\u8BA1\u7B97\u5668\u79D1\u5B66\u662F\u7814\u7A76\u7B97\u6CD5\u7684\u5B66\u79D1\u3002...\\n\\n\u8FD4\u56DEJSON\u683C\u5F0F\uFF1A{\\\"problems\\\":
+      [{\\\"type\\\": \\\"terminology\\\", \\\"original\\\": \\\"\u539F\u6587\\\",
+      \\\"suggested\\\": \\\"\u5EFA\u8BAE\\\", \\\"reason\\\": \\\"\u539F\u56E0\\\"}]}\"}],\"model\":\"aws-claude-sonnet-4-6\",\"max_tokens\":800,\"temperature\":0.1}"
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate, zstd
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '452'
+      Content-Type:
+      - application/json
+      Host:
+      - api-hub.inner.chj.cloud
+      User-Agent:
+      - LiOpenAI/Python 1.52.0
+      X-Stainless-Arch:
+      - arm64
+      X-Stainless-Lang:
+      - python
+      X-Stainless-OS:
+      - MacOS
+      X-Stainless-Package-Version:
+      - 1.52.0
+      X-Stainless-Runtime:
+      - CPython
+      X-Stainless-Runtime-Version:
+      - 3.11.15
+      bcs-apihub-requestid:
+      - REDACTED
+      x-chj-gw-source:
+      - REDACTED
+      x-chj-gwtoken:
+      - REDACTED
+      x-stainless-read-timeout:
+      - '600.0'
+      x-stainless-retry-count:
+      - '0'
+    method: POST
+    uri: http://api-hub.inner.chj.cloud/llm-gateway/v1/chat/completions/aws-claude-sonnet-4-6
+  response:
+    body:
+      string: "{\"model\":\"claude-sonnet-4-6\",\"id\":\"msg_bdrk_01WeB1i3F4Jhmhh9pb4idnDY\",\"choices\":[{\"message\":{\"content\":\"```json\\n{\\n
+        \ \\\"problems\\\": [\\n    {\\n      \\\"type\\\": \\\"terminology\\\",\\n
+        \     \\\"original\\\": \\\"\u8BA1\u7B97\u5668\u79D1\u5B66\\\",\\n      \\\"suggested\\\":
+        \\\"\u8BA1\u7B97\u673A\u79D1\u5B66\\\",\\n      \\\"reason\\\": \\\"\u300C\u8BA1\u7B97\u5668\u300D\u662F
+        calculator \u7684\u8BD1\u6CD5\uFF0C\u6307\u624B\u6301\u8BA1\u7B97\u5DE5\u5177\uFF1B\u6B64\u5904\u5E94\u4E3A
+        computer science \u7684\u6807\u51C6\u8BD1\u540D\u300C\u8BA1\u7B97\u673A\u79D1\u5B66\u300D\\\"\\n
+        \   }\\n  ]\\n}\\n```\",\"reasoning_content\":[],\"role\":\"assistant\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":103,\"total_tokens\":209,\"completion_tokens\":106,\"plugin_use_counts\":{},\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0}}}"
+    headers:
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json;charset=UTF-8
+      Date:
+      - Sat, 09 May 2026 02:33:08 GMT
+      Keep-Alive:
+      - timeout=60
+      Transfer-Encoding:
+      - chunked
+    status:
+      code: 200
+      message: OK
+- request:
+    body: "{\"messages\":[{\"role\":\"system\",\"content\":\"\u4F60\u662F\u4E00\u4E2A\u4E13\u4E1A\u7684\u4E2D\u6587\u8BA1\u7B97\u673A\u6559\u6750\u6821\u5BF9\u4E13\u5BB6\u3002\u8BF7\u4ED4\u7EC6\u68C0\u67E5\u6587\u672C\u4E2D\u7684\u8BED\u6CD5\u3001\u7528\u8BCD\u3001\u903B\u8F91\u548C\u4E13\u4E1A\u672F\u8BED\u95EE\u9898\u3002\"},{\"role\":\"user\",\"content\":\"\\n\u4F60\u662F\u4E00\u4E2A\u4E13\u4E1A\u7684\u4E2D\u6587\u8BA1\u7B97\u673A\u6559\u6750\u6821\u5BF9\u4E13\u5BB6\u3002\u8BF7\u5BF9\u4EE5\u4E0B\u6587\u672C\u8FDB\u884C\u6821\u5BF9\uFF0C\u68C0\u67E5\u8BED\u6CD5\u3001\u7528\u8BCD\u3001\u672F\u8BED\u548C\u903B\u8F91\u95EE\u9898\u3002\\n\\n**\u91CD\u8981\uFF1A\u8BF7\u4E25\u683C\u6309\u7167\u4EE5\u4E0BJSON\u683C\u5F0F\u8FD4\u56DE\u7ED3\u679C\uFF0C\u4E0D\u8981\u6DFB\u52A0\u4EFB\u4F55\u5176\u4ED6\u6587\u5B57\u6216\u8BF4\u660E**\\n\\n{\\n
+      \ \\\"issues\\\": [\\n    {\\n      \\\"type\\\": \\\"\u95EE\u9898\u7C7B\u578B\\\",\\n
+      \     \\\"text\\\": \\\"\u95EE\u9898\u6587\u672C\\\",\\n      \\\"suggestion\\\":
+      \\\"\u4FEE\u6539\u5EFA\u8BAE\\\",\\n      \\\"severity\\\": \\\"medium\\\",\\n
+      \     \\\"reason\\\": \\\"\u95EE\u9898\u539F\u56E0\\\"\\n    }\\n  ],\\n  \\\"suggestions\\\":
+      [\\n    {\\n      \\\"original\\\": \\\"\u539F\u6587\\\",\\n      \\\"suggested\\\":
+      \\\"\u5EFA\u8BAE\u4FEE\u6539\\\",\\n      \\\"reason\\\": \\\"\u4FEE\u6539\u7406\u7531\\\"\\n
+      \   }\\n  ]\\n}\\n\\n**\u68C0\u67E5\u8981\u70B9\uFF1A**\\n1. \u9519\u522B\u5B57\u548C\u7528\u8BCD\u4E0D\u5F53\\n2.
+      \u8BED\u6CD5\u9519\u8BEF\u548C\u53E5\u5F0F\u95EE\u9898\\n3. \u8BA1\u7B97\u673A\u672F\u8BED\u7684\u51C6\u786E\u6027\\n4.
+      \u6807\u70B9\u7B26\u53F7\u4F7F\u7528\\n5. \u903B\u8F91\u8868\u8FBE\u95EE\u9898\\n\\n**\u5F85\u6821\u5BF9\u6587\u672C\uFF1A**\\n\u8BA1\u7B97\u5668\u79D1\u5B66\u662F\u7814\u7A76\u7B97\u6CD5\u7684\u5B66\u79D1\u3002\\n\\n**\u8BF7\u53EA\u8FD4\u56DE\u4E0A\u8FF0JSON\u683C\u5F0F\u7684\u7ED3\u679C\uFF0C\u4E0D\u8981\u5305\u542B\u5176\u4ED6\u5185\u5BB9\u3002**\\n\"}],\"model\":\"aws-claude-sonnet-4-6\",\"max_tokens\":2000,\"temperature\":0.1}"
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate, zstd
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '1200'
+      Content-Type:
+      - application/json
+      Host:
+      - api-hub.inner.chj.cloud
+      User-Agent:
+      - LiOpenAI/Python 1.52.0
+      X-Stainless-Arch:
+      - arm64
+      X-Stainless-Lang:
+      - python
+      X-Stainless-OS:
+      - MacOS
+      X-Stainless-Package-Version:
+      - 1.52.0
+      X-Stainless-Runtime:
+      - CPython
+      X-Stainless-Runtime-Version:
+      - 3.11.15
+      bcs-apihub-requestid:
+      - REDACTED
+      x-chj-gw-source:
+      - REDACTED
+      x-chj-gwtoken:
+      - REDACTED
+      x-stainless-read-timeout:
+      - '600.0'
+      x-stainless-retry-count:
+      - '0'
+    method: POST
+    uri: http://api-hub.inner.chj.cloud/llm-gateway/v1/chat/completions/aws-claude-sonnet-4-6
+  response:
+    body:
+      string: "{\"model\":\"claude-sonnet-4-6\",\"id\":\"msg_bdrk_01KAC6wEisPwJMo8zpSqgjwJ\",\"choices\":[{\"message\":{\"content\":\"```json\\n{\\n
+        \ \\\"issues\\\": [\\n    {\\n      \\\"type\\\": \\\"\u9519\u522B\u5B57\\\",\\n
+        \     \\\"text\\\": \\\"\u8BA1\u7B97\u5668\u79D1\u5B66\\\",\\n      \\\"suggestion\\\":
+        \\\"\u8BA1\u7B97\u673A\u79D1\u5B66\\\",\\n      \\\"severity\\\": \\\"high\\\",\\n
+        \     \\\"reason\\\": \\\"\\\\\\\"\u8BA1\u7B97\u5668\\\\\\\"\u662F\u6307\u5177\u4F53\u7684\u8BA1\u7B97\u5DE5\u5177\uFF08\u5982\u7535\u5B50\u8BA1\u7B97\u5668\uFF09\uFF0C\u800C\\\\\\\"\u8BA1\u7B97\u673A\u79D1\u5B66\\\\\\\"\u624D\u662F\u6B63\u786E\u7684\u5B66\u79D1\u540D\u79F0\uFF0C\u6307\u7814\u7A76\u8BA1\u7B97\u673A\u7406\u8BBA\u4E0E\u5E94\u7528\u7684\u5B66\u79D1\\\"\\n
+        \   },\\n    {\\n      \\\"type\\\": \\\"\u903B\u8F91\u8868\u8FBE\u4E0D\u5B8C\u6574\\\",\\n
+        \     \\\"text\\\": \\\"\u8BA1\u7B97\u673A\u79D1\u5B66\u662F\u7814\u7A76\u7B97\u6CD5\u7684\u5B66\u79D1\\\",\\n
+        \     \\\"suggestion\\\": \\\"\u8BA1\u7B97\u673A\u79D1\u5B66\u662F\u7814\u7A76\u8BA1\u7B97\u7406\u8BBA\u3001\u7B97\u6CD5\u3001\u6570\u636E\u7ED3\u6784\u3001\u7F16\u7A0B\u8BED\u8A00\u3001\u8BA1\u7B97\u673A\u4F53\u7CFB\u7ED3\u6784\u53CA\u8F6F\u4EF6\u5DE5\u7A0B\u7B49\u5185\u5BB9\u7684\u5B66\u79D1\\\",\\n
+        \     \\\"severity\\\": \\\"medium\\\",\\n      \\\"reason\\\": \\\"\u8BA1\u7B97\u673A\u79D1\u5B66\u7684\u7814\u7A76\u8303\u7574\u8FDC\u4E0D\u6B62\u7B97\u6CD5\uFF0C\u4EC5\u8BF4\\\\\\\"\u7814\u7A76\u7B97\u6CD5\\\\\\\"\u8FC7\u4E8E\u7247\u9762\uFF0C\u8868\u8FF0\u4E0D\u591F\u51C6\u786E\u548C\u5B8C\u6574\\\"\\n
+        \   }\\n  ],\\n  \\\"suggestions\\\": [\\n    {\\n      \\\"original\\\":
+        \\\"\u8BA1\u7B97\u5668\u79D1\u5B66\u662F\u7814\u7A76\u7B97\u6CD5\u7684\u5B66\u79D1\u3002\\\",\\n
+        \     \\\"suggested\\\": \\\"\u8BA1\u7B97\u673A\u79D1\u5B66\u662F\u7814\u7A76\u8BA1\u7B97\u7406\u8BBA\u3001\u7B97\u6CD5\u3001\u6570\u636E\u7ED3\u6784\u3001\u7F16\u7A0B\u8BED\u8A00\u53CA\u8F6F\u4EF6\u5DE5\u7A0B\u7B49\u5185\u5BB9\u7684\u5B66\u79D1\u3002\\\",\\n
+        \     \\\"reason\\\": \\\"\u4FEE\u6B63\\\\\\\"\u8BA1\u7B97\u5668\\\\\\\"\u4E3A\\\\\\\"\u8BA1\u7B97\u673A\\\\\\\"\u7684\u9519\u522B\u5B57\uFF0C\u5E76\u8865\u5145\u5B8C\u5584\u8BA1\u7B97\u673A\u79D1\u5B66\u7684\u7814\u7A76\u8303\u7574\uFF0C\u4F7F\u5B9A\u4E49\u66F4\u52A0\u51C6\u786E\u5168\u9762\\\"\\n
+        \   }\\n  ]\\n}\\n```\",\"reasoning_content\":[],\"role\":\"assistant\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":373,\"total_tokens\":781,\"completion_tokens\":408,\"plugin_use_counts\":{},\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0}}}"
+    headers:
+      Connection:
+      - keep-alive
+      Content-Type:
+      - application/json;charset=UTF-8
+      Date:
+      - Sat, 09 May 2026 02:33:14 GMT
+      Keep-Alive:
+      - timeout=60
+      Transfer-Encoding:
+      - chunked
+    status:
+      code: 200
+      message: OK
+version: 1
