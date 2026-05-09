@@ -36,6 +36,7 @@ if str(SRC_DIR) not in sys.path:
 
 load_dotenv(PROJECT_ROOT / ".env")
 
+from categories import CATEGORY_BY_ID, DEFAULT_CATEGORY_IDS, categories_for_ui
 from src.web.jobs import JobStatus, JobStore, run_proofread_job
 
 logger = logging.getLogger(__name__)
@@ -94,6 +95,8 @@ def create_app(*, job_store: JobStore | None = None) -> FastAPI:
             "index.html",
             {
                 "modes": MODE_OPTIONS,
+                "category_groups": categories_for_ui(),
+                "default_category_ids": set(DEFAULT_CATEGORY_IDS),
                 "provider": _detect_provider(),
                 "has_key": bool(_get_api_key()),
             },
@@ -104,9 +107,15 @@ def create_app(*, job_store: JobStore | None = None) -> FastAPI:
         request: Request,
         file: UploadFile = File(...),
         mode: str = Form("comments"),
+        categories: list[str] = Form(default_factory=list),
     ) -> HTMLResponse:
         if mode not in ALLOWED_MODES:
             raise HTTPException(status_code=400, detail=f"未知模式: {mode}")
+
+        # 过滤未知 category id；空列表落回默认
+        valid_cats = [c for c in categories if c in CATEGORY_BY_ID]
+        if not valid_cats:
+            valid_cats = list(DEFAULT_CATEGORY_IDS)
 
         # 仅放行 .docx
         if not (file.filename or "").lower().endswith(".docx"):
@@ -133,6 +142,7 @@ def create_app(*, job_store: JobStore | None = None) -> FastAPI:
             filename=file.filename or "upload.docx",
             mode=mode,
             source_bytes=contents,
+            categories=valid_cats,
         )
         # 后台跑校对（强引用避免被GC回收，完成后自动从set里移除）
         task = asyncio.create_task(run_proofread_job(store, job, api_key=api_key))

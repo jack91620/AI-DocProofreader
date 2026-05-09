@@ -77,6 +77,23 @@ class TestStaticRoutes:
         # 4 种模式都列出来
         for value in ("comments", "revisions", "track_changes", "enhanced"):
             assert f'value="{value}"' in r.text
+        # 12 个校对维度都渲染
+        for cat in (
+            "typo",
+            "word_usage",
+            "grammar",
+            "logic",
+            "punctuation",
+            "numerals",
+            "style",
+            "terminology",
+            "cn_en_terms",
+            "code",
+            "formula",
+            "knowledge",
+            "political",
+        ):
+            assert f'value="{cat}"' in r.text
 
 
 class TestUploadValidation:
@@ -183,6 +200,53 @@ class TestJobLifecycle:
     def test_status_404_for_unknown_id(self, client: TestClient):
         r = client.get("/jobs/deadbeefdead/status")
         assert r.status_code == 404
+
+    def test_categories_are_persisted_on_job(
+        self, client: TestClient, docx_bytes: bytes, store: JobStore
+    ):
+        r = client.post(
+            "/jobs",
+            files={"file": ("x.docx", docx_bytes, "application/octet-stream")},
+            data={
+                "mode": "comments",
+                "categories": ["typo", "punctuation", "code"],
+            },
+        )
+        assert r.status_code == 200
+        import re
+
+        m = re.search(r'id="job-([a-f0-9]+)"', r.text)
+        assert m, r.text[:300]
+        job_id = m.group(1)
+
+        async def fetch():
+            return await store.get(job_id)
+
+        job = asyncio.run(fetch())
+        assert job is not None
+        assert sorted(job.categories) == ["code", "punctuation", "typo"]
+
+    def test_unknown_categories_fall_back_to_default(
+        self, client: TestClient, docx_bytes: bytes, store: JobStore
+    ):
+        r = client.post(
+            "/jobs",
+            files={"file": ("x.docx", docx_bytes, "application/octet-stream")},
+            data={"mode": "comments", "categories": ["totally-fake"]},
+        )
+        assert r.status_code == 200
+        import re
+
+        m = re.search(r'id="job-([a-f0-9]+)"', r.text)
+        job_id = m.group(1)
+
+        async def fetch():
+            return await store.get(job_id)
+
+        job = asyncio.run(fetch())
+        assert job is not None
+        # 未知 id 全部被过滤后，会落回 DEFAULT_CATEGORY_IDS
+        assert "typo" in job.categories
 
     def test_download_404_when_not_succeeded(
         self, client: TestClient, store: JobStore, docx_bytes: bytes

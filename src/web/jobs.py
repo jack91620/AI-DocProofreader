@@ -46,6 +46,7 @@ class Job:
     mode: str  # comments / revisions / track_changes / enhanced
     input_path: Path  # 服务端临时存储的输入 docx
     output_path: Path  # 校对结果 docx 的预期路径
+    categories: list[str] = field(default_factory=list)  # 校对维度 id 列表
     status: JobStatus = JobStatus.PENDING
     progress: int = 0  # 0-100
     message: str = ""  # 进度文本
@@ -72,7 +73,14 @@ class JobStore:
         self.work_dir = work_dir or Path(tempfile.gettempdir()) / "ai-proofreader-jobs"
         self.work_dir.mkdir(parents=True, exist_ok=True)
 
-    async def create(self, *, filename: str, mode: str, source_bytes: bytes) -> Job:
+    async def create(
+        self,
+        *,
+        filename: str,
+        mode: str,
+        source_bytes: bytes,
+        categories: list[str] | None = None,
+    ) -> Job:
         """落盘上传文件并登记任务。"""
         job_id = uuid.uuid4().hex[:12]
         job_dir = self.work_dir / job_id
@@ -93,6 +101,7 @@ class JobStore:
             mode=mode,
             input_path=input_path,
             output_path=output_path,
+            categories=list(categories) if categories else [],
         )
         async with self._lock:
             self._jobs[job_id] = job
@@ -165,4 +174,8 @@ def _run_blocking(job: Job, api_key: str) -> bool:
     from proofreader_factory import create_proofreader
 
     proofreader = create_proofreader(api_key, job.mode)
-    return proofreader.proofread_document(str(job.input_path), str(job.output_path))
+    return proofreader.proofread_document(
+        str(job.input_path),
+        str(job.output_path),
+        categories=job.categories or None,
+    )

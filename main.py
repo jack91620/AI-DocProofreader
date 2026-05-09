@@ -90,8 +90,21 @@ def cli():
     type=click.Choice(["comments", "revisions", "track_changes", "enhanced"]),
     help="校对模式：comments（批注模式）、revisions（修订模式）、track_changes（跟踪更改）、enhanced（跟踪更改+批注）",
 )
+@click.option(
+    "-c",
+    "--category",
+    "categories",
+    multiple=True,
+    help="校对维度（可重复 -c 多次）。例: -c typo -c terminology。运行 list-categories 查看全部。",
+)
 @click.option("--show-chunks", is_flag=True, help="显示文档分块处理信息")
-def proofread(input_file: str, output_file: str, mode: str, show_chunks: bool):
+def proofread(
+    input_file: str,
+    output_file: str,
+    mode: str,
+    categories: tuple[str, ...],
+    show_chunks: bool,
+):
     """校对Word文档 - 支持长文档自动分块处理"""
     try:
         api_key = get_api_key()
@@ -151,8 +164,9 @@ def proofread(input_file: str, output_file: str, mode: str, show_chunks: bool):
         console.print(label)
         console.print(desc)
 
+        cat_list = list(categories) if categories else None
         proofreader = create_proofreader(api_key, mode)
-        success = proofreader.proofread_document(input_file, output_file)
+        success = proofreader.proofread_document(input_file, output_file, categories=cat_list)
 
         if success:
             console.print(
@@ -369,6 +383,33 @@ def revise(input_file: str, output_file: str):
 
     except Exception as e:
         console.print(f"[red]错误：{e}[/red]")
+
+
+@cli.command("list-categories")
+def list_categories():
+    """列出所有校对维度。"""
+    from src.categories import CATEGORIES, GROUPS
+
+    by_group: dict[str, list] = {}
+    for c in CATEGORIES:
+        by_group.setdefault(c.group, []).append(c)
+
+    console.print("\n[bold]📋 可用校对维度（CY/T 266—2023 + 计算机教材专属）[/bold]\n")
+    for g in sorted(GROUPS, key=lambda x: x.order):
+        cats = by_group.get(g.id, [])
+        if not cats:
+            continue
+        console.print(f"[cyan bold]{g.label}[/cyan bold] ({g.id}) — {g.description}")
+        for c in cats:
+            mark = "[green]●[/green]" if c.default else "[dim]○[/dim]"
+            risk = " [yellow]⚠️ 高风险[/yellow]" if c.high_risk else ""
+            console.print(f"  {mark} [bold]{c.id:<14}[/bold] {c.label}{risk}")
+            console.print(f"      [dim]{c.description}[/dim]")
+        console.print()
+    console.print("[dim]● = 默认开启；⚠️ = 高风险（建议人审兜底，政治性默认关闭）[/dim]")
+    console.print(
+        "\n[dim]用法: python main.py proofread -i x.docx -c typo -c punctuation -c terminology[/dim]\n"
+    )
 
 
 @cli.command()

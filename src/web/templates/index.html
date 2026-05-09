@@ -33,6 +33,35 @@
       </select>
     </div>
 
+    <div class="form-row">
+      <label>校对维度</label>
+      <p class="muted" style="margin: 0 0 0.6rem 0; font-size: 0.85rem">
+        依据 CY/T 266—2023《图书编校质量差错判定》。默认勾选"文字层面"组（与原行为一致）。
+        <a href="#" id="select-all-cats" style="margin-left: 0.5rem">全选</a>
+        <a href="#" id="select-default-cats" style="margin-left: 0.5rem">仅默认</a>
+        <a href="#" id="select-none-cats" style="margin-left: 0.5rem">全不选</a>
+      </p>
+      <div class="cat-grid">
+        {% for group, cats in category_groups %}
+        <fieldset class="cat-group">
+          <legend>{{ group.label }}</legend>
+          <div class="cat-group-desc">{{ group.description }}</div>
+          {% for c in cats %}
+          <label class="cat-item{% if c.high_risk %} cat-risk{% endif %}">
+            <input type="checkbox" name="categories" value="{{ c.id }}"
+                   {% if c.id in default_category_ids %}checked{% endif %}>
+            <span class="cat-label">
+              {{ c.label }}
+              {% if c.high_risk %}<span class="cat-badge">⚠️</span>{% endif %}
+            </span>
+            <span class="cat-desc">{{ c.description }}</span>
+          </label>
+          {% endfor %}
+        </fieldset>
+        {% endfor %}
+      </div>
+    </div>
+
     <button type="submit" id="submit-btn" disabled>开始校对</button>
   </form>
 </div>
@@ -77,6 +106,24 @@
   document.getElementById('upload-form').addEventListener('htmx:afterRequest', () => {
     submitBtn.disabled = true;
     submitBtn.textContent = '校对中…';
+  });
+
+  // 校对维度快捷选择
+  const catBoxes = () => document.querySelectorAll('input[name="categories"]');
+  const defaultIds = new Set([
+    {% for cid in default_category_ids %}"{{ cid }}",{% endfor %}
+  ]);
+  document.getElementById('select-all-cats').addEventListener('click', e => {
+    e.preventDefault();
+    catBoxes().forEach(b => { b.checked = true; });
+  });
+  document.getElementById('select-default-cats').addEventListener('click', e => {
+    e.preventDefault();
+    catBoxes().forEach(b => { b.checked = defaultIds.has(b.value); });
+  });
+  document.getElementById('select-none-cats').addEventListener('click', e => {
+    e.preventDefault();
+    catBoxes().forEach(b => { b.checked = false; });
   });
 </script>
 

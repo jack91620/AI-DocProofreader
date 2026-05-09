@@ -79,6 +79,61 @@
     .error { color: #b91c1c; background: #fef2f2; padding: 0.75rem 1rem; border-radius: 8px; }
     .form-row { margin: 1rem 0; }
     .form-row label { display: block; margin-bottom: 0.4rem; font-weight: 600; }
+
+    /* 校对维度多选网格 */
+    .cat-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 0.6rem;
+    }
+    .cat-group {
+      border: 1px solid #d6deeb;
+      border-radius: 8px;
+      padding: 0.6rem 0.8rem 0.4rem;
+      margin: 0;
+    }
+    .cat-group legend {
+      padding: 0 0.4rem;
+      font-weight: 600;
+      font-size: 0.9rem;
+      color: #1f2933;
+    }
+    .cat-group-desc {
+      font-size: 0.78rem;
+      color: #6b7280;
+      margin-bottom: 0.4rem;
+    }
+    .cat-item {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      column-gap: 0.5rem;
+      align-items: start;
+      padding: 0.35rem 0;
+      cursor: pointer;
+      font-weight: normal;   /* 覆盖 .form-row label 的粗体 */
+      margin-bottom: 0;
+    }
+    .cat-item input[type=checkbox] {
+      grid-row: span 2;
+      margin-top: 0.2rem;
+    }
+    .cat-item .cat-label {
+      font-size: 0.9rem;
+      font-weight: 500;
+    }
+    .cat-item .cat-desc {
+      grid-column: 2;
+      font-size: 0.75rem;
+      color: #6b7280;
+      line-height: 1.3;
+    }
+    .cat-item:hover { background: #f9fafb; border-radius: 4px; }
+    .cat-risk .cat-label { color: #b45309; }
+    .cat-badge {
+      display: inline-block;
+      font-size: 0.75rem;
+      margin-left: 0.2rem;
+    }
   </style>
   {% block head_extra %}{% endblock %}
 </head>
