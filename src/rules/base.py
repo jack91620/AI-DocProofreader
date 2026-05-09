@@ -91,8 +91,10 @@ class RuleEngine:
 
 def build_default_engine() -> RuleEngine:
     """组装默认规则集。延迟 import 避免循环依赖。"""
+    from rules.code import build_code_rules
     from rules.numerals import build_numerals_rules
     from rules.punctuation import build_punctuation_rules
+    from rules.style import build_style_rules
     from rules.terminology import build_terminology_rules
 
     engine = RuleEngine()
@@ -100,6 +102,8 @@ def build_default_engine() -> RuleEngine:
         *build_punctuation_rules(),
         *build_numerals_rules(),
         *build_terminology_rules(),
+        *build_style_rules(),
+        *build_code_rules(),
     ):
         engine.register(rule)
     return engine

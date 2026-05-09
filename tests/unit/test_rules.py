@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from rules.base import Rule, RuleEngine, RuleHit, build_default_engine
+from rules.code import build_code_rules
 from rules.numerals import build_numerals_rules
 from rules.punctuation import build_punctuation_rules
+from rules.style import build_style_rules
 from rules.terminology import build_terminology_rules
 
 
@@ -132,6 +134,90 @@ class TestTerminologyRules:
         hits = self.engine.scan("性能是核心指标。")
         cons = [h for h in hits if h.rule_id.startswith("terminology.consistency")]
         assert not cons
+
+
+# ===========================================================================
+# 体例规则
+# ===========================================================================
+class TestStyleRules:
+    def setup_method(self):
+        self.engine = RuleEngine(rules=build_style_rules())
+
+    def test_figure_numbering_mixed(self):
+        # 同时出现 "图1-1" 和 "图1.2" 应给一致性提示
+        text = "见图1-1所示\n再看图1.2的结构"
+        hits = self.engine.scan(text)
+        cons = [h for h in hits if h.rule_id.startswith("style.numbering_consistency")]
+        assert cons, f"应识别图编号混用：{hits}"
+
+    def test_figure_numbering_single_format_no_warn(self):
+        text = "见图1-1\n再看图1-2\n最后图1-3"
+        hits = self.engine.scan(text)
+        cons = [h for h in hits if h.rule_id.startswith("style.numbering_consistency")]
+        assert not cons, "单一格式不应误报"
+
+    def test_chapter_numbering_mixed(self):
+        text = "第一章 概述\n第2章 进阶"
+        hits = self.engine.scan(text)
+        chap = [h for h in hits if h.rule_id == "style.chapter_numbering"]
+        assert chap, "应识别章节编号混用"
+
+    def test_reference_type_marker_lowercase(self):
+        text = "[1] 张三. 算法导论 [m]. 清华出版社, 2018."
+        hits = self.engine.scan(text)
+        ref = [h for h in hits if h.rule_id.startswith("style.reference_type_marker")]
+        assert ref
+        assert ref[0].suggestion == "[M]"
+
+    def test_reference_type_marker_full_width_bracket(self):
+        text = "［J］期刊文章"
+        hits = self.engine.scan(text)
+        ref = [h for h in hits if h.rule_id.startswith("style.reference_type_marker")]
+        assert ref
+        assert ref[0].suggestion == "[J]"
+
+
+# ===========================================================================
+# 代码段规则
+# ===========================================================================
+class TestCodeRules:
+    def setup_method(self):
+        self.engine = RuleEngine(rules=build_code_rules())
+
+    def test_fullwidth_in_fenced_block(self):
+        text = "```python\ndef hello（）：\n    return 0\n```"
+        hits = self.engine.scan(text)
+        fw = [h for h in hits if h.rule_id == "code.fullwidth_in_block"]
+        # （ ） ： 三个全角字符
+        assert len(fw) == 3
+        assert {h.text for h in fw} == {"（", "）", "："}
+
+    def test_fullwidth_in_indented_block(self):
+        text = "示例：\n    def f（x）：\n        return x"
+        hits = self.engine.scan(text)
+        fw = [h for h in hits if h.rule_id == "code.fullwidth_in_block"]
+        assert len(fw) >= 2  # 至少 ( ) 两个全角
+
+    def test_no_false_positive_in_chinese_paragraph(self):
+        text = "本段是中文，使用了（全角括号），这是规范的。"
+        hits = self.engine.scan(text)
+        fw = [h for h in hits if h.rule_id == "code.fullwidth_in_block"]
+        # 中文段落不算代码块，不该报
+        assert not fw
+
+    def test_bracket_mixed_chinese_in_halfwidth(self):
+        text = "这是Python库(测试库)的描述。"
+        hits = self.engine.scan(text)
+        bm = [h for h in hits if h.rule_id == "code.bracket_mixed"]
+        assert bm
+        assert "（测试库）" in bm[0].suggestion
+
+    def test_bracket_pure_english_in_halfwidth_ok(self):
+        text = "这是 Python 库 (numpy) 的描述。"
+        hits = self.engine.scan(text)
+        bm = [h for h in hits if h.rule_id == "code.bracket_mixed"]
+        # 半角括号包英文是允许的
+        assert not bm
 
 
 # ===========================================================================
