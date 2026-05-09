@@ -88,6 +88,7 @@ def lint_docx(path: str | Path) -> list[LintIssue]:
                 parts["word/document.xml"], parts.get("word/comments.xml")
             )
         )
+        issues.extend(_check_revision_id_unique(parts["word/document.xml"]))
 
     if "[Content_Types].xml" in parts:
         issues.extend(_check_namespace_uniformity(parts["[Content_Types].xml"], CT_NS))
@@ -203,6 +204,41 @@ def _check_comment_id_consistency(
             )
         )
 
+    return issues
+
+
+# ---------------------------------------------------------------------------
+# 规则: revision id (w:del / w:ins / w:moveFrom / w:moveTo) 全局唯一
+# ---------------------------------------------------------------------------
+def _check_revision_id_unique(doc: etree._Element) -> list[LintIssue]:
+    """OOXML 要求 w:del / w:ins / w:moveFrom / w:moveTo 等修订元素的
+    ``w:id`` 在文档内**全局唯一**。重复 → Word 报"无法读取的内容/恢复"。
+
+    历史 bug: WordTrackChangesManager._apply_changes_to_paragraph 在同一
+    ``original_text`` 在段落出现多次时，复用同一个 change 对象（含同一
+    del_id/ins_id），生成的 ``<w:del w:id="3"/>`` 出现 2 次。commit D3 修复。
+    """
+    issues: list[LintIssue] = []
+    seen: dict[str, int] = {}  # id → 出现次数
+    for tag in ("del", "ins", "moveFrom", "moveTo"):
+        for e in doc.iter(Q(tag)):
+            wid = e.get(Q("id"))
+            if wid is None:
+                continue
+            seen[wid] = seen.get(wid, 0) + 1
+    dupes = {wid: n for wid, n in seen.items() if n > 1}
+    if dupes:
+        issues.append(
+            LintIssue(
+                rule="ooxml.revision_id_unique",
+                severity="error",
+                location="document.xml",
+                detail=(
+                    f"修订元素 <w:del>/<w:ins>/<w:move*> 的 w:id 必须文档内唯一，"
+                    f"发现重复: {dupes}"
+                ),
+            )
+        )
     return issues
 
 

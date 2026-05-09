@@ -183,6 +183,73 @@ class TestCommentIdConsistency:
 
 
 # ---------------------------------------------------------------------------
+# revision id 全局唯一
+# ---------------------------------------------------------------------------
+class TestRevisionIdUnique:
+    """复现 D3: <w:del>/<w:ins> 的 w:id 必须文档内唯一，重复则 Word 拒收。"""
+
+    def test_duplicate_del_id_caught(self, tmp_path: Path):
+        bad = b"""<w:p>
+            <w:del w:id="3" w:author="x" w:date="2024-01-01T00:00:00Z">
+                <w:r><w:delText>old1</w:delText></w:r>
+            </w:del>
+            <w:del w:id="3" w:author="x" w:date="2024-01-01T00:00:00Z">
+                <w:r><w:delText>old2</w:delText></w:r>
+            </w:del>
+        </w:p>"""
+        path = _make_docx(
+            tmp_path,
+            {
+                "[Content_Types].xml": _content_types_ok(),
+                "word/document.xml": _document_ok(extra_paragraphs=bad),
+            },
+        )
+        rules = {i.rule for i in lint_docx(path)}
+        assert "ooxml.revision_id_unique" in rules
+
+    def test_duplicate_ins_id_caught(self, tmp_path: Path):
+        bad = b"""<w:p>
+            <w:ins w:id="1003" w:author="x" w:date="2024-01-01T00:00:00Z">
+                <w:r><w:t>new1</w:t></w:r>
+            </w:ins>
+            <w:ins w:id="1003" w:author="x" w:date="2024-01-01T00:00:00Z">
+                <w:r><w:t>new2</w:t></w:r>
+            </w:ins>
+        </w:p>"""
+        path = _make_docx(
+            tmp_path,
+            {
+                "[Content_Types].xml": _content_types_ok(),
+                "word/document.xml": _document_ok(extra_paragraphs=bad),
+            },
+        )
+        rules = {i.rule for i in lint_docx(path)}
+        assert "ooxml.revision_id_unique" in rules
+
+    def test_unique_revision_ids_no_warn(self, tmp_path: Path):
+        ok = b"""<w:p>
+            <w:del w:id="1" w:author="x" w:date="2024-01-01T00:00:00Z">
+                <w:r><w:delText>old1</w:delText></w:r>
+            </w:del>
+            <w:del w:id="2" w:author="x" w:date="2024-01-01T00:00:00Z">
+                <w:r><w:delText>old2</w:delText></w:r>
+            </w:del>
+            <w:ins w:id="1001" w:author="x" w:date="2024-01-01T00:00:00Z">
+                <w:r><w:t>new1</w:t></w:r>
+            </w:ins>
+        </w:p>"""
+        path = _make_docx(
+            tmp_path,
+            {
+                "[Content_Types].xml": _content_types_ok(),
+                "word/document.xml": _document_ok(extra_paragraphs=ok),
+            },
+        )
+        errors = [i for i in lint_docx(path) if i.severity == "error"]
+        assert not errors, f"unique revision id 不该报错: {errors}"
+
+
+# ---------------------------------------------------------------------------
 # 命名空间一致性
 # ---------------------------------------------------------------------------
 class TestNamespaceUniformity:

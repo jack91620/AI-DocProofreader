@@ -102,6 +102,7 @@ class WordTrackChangesManager:
             for change in changes:
                 original_part = change["original_text"]
                 start = 0
+                first_match = True
                 while True:
                     pos = original_text.find(original_part, start)
                     if pos == -1:
@@ -109,7 +110,21 @@ class WordTrackChangesManager:
 
                     position_key = (pos, original_part)
                     if position_key not in processed_positions:
-                        changes_with_pos.append((pos, change))
+                        # 关键: 同一个 original_part 在段落出现多次时，
+                        # 必须为每次出现分配独立的 revision id，否则
+                        # <w:del> / <w:ins> 在文档内会出现重复 w:id，
+                        # OOXML 严格要求 revision id 全局唯一，Word 拒收。
+                        if first_match:
+                            change_to_use = change
+                            first_match = False
+                        else:
+                            self.revision_counter += 1
+                            change_to_use = {
+                                **change,
+                                "del_id": self.revision_counter,
+                                "ins_id": self.revision_counter + 1000,
+                            }
+                        changes_with_pos.append((pos, change_to_use))
                         processed_positions.add(position_key)
 
                     start = pos + 1
