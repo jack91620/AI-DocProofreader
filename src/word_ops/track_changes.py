@@ -5,6 +5,7 @@ Word跟踪更改操作模块 - 迁移自word_track_changes.py
 """
 
 import os
+import re
 import uuid
 import xml.etree.ElementTree as ET
 from datetime import datetime
@@ -278,29 +279,56 @@ def enable_track_changes_in_docx(docx_path, output_path, revisions_data):
 
 
 def enable_track_changes_setting(temp_dir):
-    """在settings.xml中启用跟踪更改"""
-    try:
-        settings_path = os.path.join(temp_dir, "word", "settings.xml")
+    """在settings.xml中启用跟踪更改。
 
-        if os.path.exists(settings_path):
-            tree = ET.parse(settings_path)
-            root = tree.getroot()
-        else:
+    实现注意:
+    --------
+    settings.xml 的根节点通常带 ``mc:Ignorable="w14"`` 这种字符串引用，
+    引用的 ``w14`` 等前缀在 root 上以 ``xmlns:w14=...`` 形式声明。
+    用 ``ET.parse`` 解析再 ``tree.write`` 重写会把所有前缀重映射为
+    ``ns0/ns1/...``，导致 ``Ignorable="w14"`` 引用了**未声明**的前缀，
+    OOXML markup-compatibility (Part 3) 严格校验会让 Word 拒收，弹
+    "无法读取的内容/恢复此文档"。
+
+    解法: 用字符串级修改插入 ``<w:trackRevisions w:val="1"/>``，
+    完全不动原命名空间声明。
+    """
+    settings_path = os.path.join(temp_dir, "word", "settings.xml")
+    try:
+        if not os.path.exists(settings_path):
+            # 没文件时退回到全新创建（这种场景不会有 Ignorable 问题）
             ns_w = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
             root = ET.Element(f"{{{ns_w}}}settings")
-            tree = ET.ElementTree(root)
+            ET.SubElement(root, f"{{{ns_w}}}trackRevisions").set(f"{{{ns_w}}}val", "1")
+            ET.ElementTree(root).write(settings_path, encoding="utf-8", xml_declaration=True)
+            logger.info("已新建 settings.xml 并启用跟踪更改")
+            return
 
-        ns = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+        with open(settings_path, encoding="utf-8") as f:
+            text = f.read()
 
-        track_revisions = root.find(".//w:trackRevisions", ns)
+        # 已经启用过就跳过
+        if re.search(r"<w:trackRevisions[\s/>]", text):
+            logger.info("settings.xml 已含 trackRevisions，跳过")
+            return
 
-        if track_revisions is None:
-            track_revisions = ET.SubElement(root, f"{{{ns['w']}}}trackRevisions")
+        # 在 <w:settings ...> 起始标签之后插入 <w:trackRevisions w:val="1"/>
+        # 兼容自闭合 <w:settings/> 与展开标签 <w:settings>...</w:settings>
+        m = re.search(r"<w:settings\b[^>]*?(/?>)", text)
+        if not m:
+            logger.warning("未识别 <w:settings> 起始标签，settings.xml 未修改")
+            return
 
-        track_revisions.set(f"{{{ns['w']}}}val", "1")
+        if m.group(1) == "/>":
+            # 自闭合 → 展开
+            new_open = m.group(0)[:-2] + "><w:trackRevisions w:val=\"1\"/></w:settings>"
+            text = text[: m.start()] + new_open + text[m.end():]
+        else:
+            text = text[: m.end()] + "<w:trackRevisions w:val=\"1\"/>" + text[m.end():]
 
-        tree.write(settings_path, encoding="utf-8", xml_declaration=True)
-        logger.info("已在settings.xml中启用跟踪更改")
+        with open(settings_path, "w", encoding="utf-8") as f:
+            f.write(text)
+        logger.info("已在 settings.xml 中启用跟踪更改（字符串级插入，保留原命名空间）")
 
     except Exception as e:
         logger.error(f"启用跟踪更改设置失败: {e}")

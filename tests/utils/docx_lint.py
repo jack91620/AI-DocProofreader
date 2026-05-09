@@ -80,6 +80,20 @@ def lint_docx(path: str | Path) -> list[LintIssue]:
                 except etree.XMLSyntaxError as e:
                     issues.append(LintIssue("xml.syntax", "error", optional, str(e)))
 
+        # markup-compatibility 校验需要扫描所有 word/*.xml part
+        # （settings.xml / styles.xml 等也可能含 mc:Ignorable）
+        for name in names:
+            if (
+                name.startswith("word/")
+                and name.endswith(".xml")
+                and not name.startswith("word/_rels/")
+                and name not in parts
+            ):
+                try:
+                    parts[name] = etree.fromstring(z.read(name))
+                except etree.XMLSyntaxError as e:
+                    issues.append(LintIssue("xml.syntax", "error", name, str(e)))
+
     # === 业务规则 ===
     if "word/document.xml" in parts:
         issues.extend(_check_paragraph_order(parts["word/document.xml"]))
@@ -89,6 +103,11 @@ def lint_docx(path: str | Path) -> list[LintIssue]:
             )
         )
         issues.extend(_check_revision_id_unique(parts["word/document.xml"]))
+
+    # 对所有 word/*.xml part 跑 markup-compatibility 校验
+    for part_name, root in parts.items():
+        if part_name.startswith("word/") and part_name.endswith(".xml"):
+            issues.extend(_check_mc_ignorable_declared(root, part_name))
 
     if "[Content_Types].xml" in parts:
         issues.extend(_check_namespace_uniformity(parts["[Content_Types].xml"], CT_NS))
@@ -239,6 +258,45 @@ def _check_revision_id_unique(doc: etree._Element) -> list[LintIssue]:
                 ),
             )
         )
+    return issues
+
+
+# ---------------------------------------------------------------------------
+# 规则: mc:Ignorable 引用的前缀必须被声明
+# ---------------------------------------------------------------------------
+MC_NS = "http://schemas.openxmlformats.org/markup-compatibility/2006"
+
+
+def _check_mc_ignorable_declared(root: etree._Element, part_name: str) -> list[LintIssue]:
+    """OOXML Part 3 (Markup Compatibility) §A.6: 任何 ``mc:Ignorable``
+    属性中列出的前缀都必须被该 element 或其祖先声明（即有对应的 xmlns:N）。
+
+    历史 bug: ``ET.parse`` settings.xml 后 ``tree.write`` 把所有前缀
+    重映射为 ``ns0/ns1/...``，但 ``mc:Ignorable="w14"`` 是字符串值
+    ElementTree 不会改它，结果引用的 ``w14`` 前缀失声明，Word 拒收。
+    commit D5 修复。
+    """
+    issues: list[LintIssue] = []
+    ignorable_attr = f"{{{MC_NS}}}Ignorable"
+    val = root.get(ignorable_attr)
+    if not val:
+        return issues
+    declared = set(root.nsmap.keys())
+    declared.discard(None)  # 默认 ns 不参与 prefix 引用
+    for raw in val.split():
+        prefix = raw.strip()
+        if prefix and prefix not in declared:
+            issues.append(
+                LintIssue(
+                    rule="ooxml.mc_ignorable_undeclared",
+                    severity="error",
+                    location=part_name,
+                    detail=(
+                        f'mc:Ignorable="{val}" 引用了未声明的前缀 {prefix!r}；'
+                        "已声明前缀: " + ", ".join(sorted(declared))
+                    ),
+                )
+            )
     return issues
 
 

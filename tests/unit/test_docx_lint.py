@@ -274,6 +274,57 @@ class TestNamespaceUniformity:
 
 
 # ---------------------------------------------------------------------------
+# mc:Ignorable 引用的前缀必须声明
+# ---------------------------------------------------------------------------
+MC_NS = "http://schemas.openxmlformats.org/markup-compatibility/2006"
+
+
+class TestMcIgnorableDeclared:
+    """复现 D5: settings.xml 的 ``mc:Ignorable="w14"`` 必须有对应
+    ``xmlns:w14=...`` 声明，否则 Word 拒收。"""
+
+    def test_undeclared_prefix_caught(self, tmp_path: Path):
+        # 故意在 settings.xml 里有 mc:Ignorable="w14"，但未声明 w14 前缀
+        bad_settings = (
+            b'<?xml version="1.0" encoding="UTF-8"?>'
+            b'<ns0:settings '
+            b'xmlns:ns0="' + W_NS.encode() + b'" '
+            b'xmlns:ns1="' + MC_NS.encode() + b'" '
+            b'ns1:Ignorable="w14"/>'  # ← w14 未声明
+        )
+        path = _make_docx(
+            tmp_path,
+            {
+                "[Content_Types].xml": _content_types_ok(),
+                "word/document.xml": _document_ok(),
+                "word/settings.xml": bad_settings,
+            },
+        )
+        rules = {i.rule for i in lint_docx(path)}
+        assert "ooxml.mc_ignorable_undeclared" in rules
+
+    def test_declared_prefix_passes(self, tmp_path: Path):
+        ok_settings = (
+            b'<?xml version="1.0" encoding="UTF-8"?>'
+            b'<w:settings '
+            b'xmlns:w="' + W_NS.encode() + b'" '
+            b'xmlns:mc="' + MC_NS.encode() + b'" '
+            b'xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" '
+            b'mc:Ignorable="w14"/>'
+        )
+        path = _make_docx(
+            tmp_path,
+            {
+                "[Content_Types].xml": _content_types_ok(),
+                "word/document.xml": _document_ok(),
+                "word/settings.xml": ok_settings,
+            },
+        )
+        errors = [i for i in lint_docx(path) if i.severity == "error"]
+        assert not errors, f"已声明前缀不该报错: {errors}"
+
+
+# ---------------------------------------------------------------------------
 # CLI smoke
 # ---------------------------------------------------------------------------
 class TestCli:
